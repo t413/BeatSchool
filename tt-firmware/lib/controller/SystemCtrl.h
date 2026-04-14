@@ -1,0 +1,47 @@
+#pragma once
+#include <PktHandler.h>
+#include <array>
+
+class CRGB;
+class HardwareSerial;
+
+namespace ctrl {
+    class LEDCtrl;
+
+    class SystemCtrl : public PktHandler {
+    public:
+        SystemCtrl(const char* version);
+        virtual ~SystemCtrl() = default;
+
+        virtual void setupLeds(CRGB* leds, uint8_t numLeds);
+        virtual void setupESPNow();
+        virtual void setupHandler(PktHandler* h) { extraHandler_ = h; }
+
+        virtual void loop();
+        virtual bool isBase() const { return true; }
+
+        virtual bool handlePacket(const comms::PktHeader&, const uint8_t* payload, uint8_t plen, MsgDest from) override;
+        virtual void sendMsg(uint8_t id, uint8_t type, const uint8_t* payload, uint8_t plen, MsgDest to);
+
+    protected:
+        const char* version_ = nullptr;
+        uint16_t address_ = 0;
+        PktHandler* extraHandler_ = nullptr;
+        LEDCtrl* ledCtrl_ = nullptr;
+
+        uint8_t serBuf_[256] = {0};
+        uint8_t serPos_ = 0;
+        uint32_t lastHandledCmd_ = 0;
+        uint32_t idlePingLastSent_ = 2000;
+        uint32_t idlePingPeriod_ = 5000;
+
+        static constexpr std::array<uint8_t, 6> BROADCAST_ADDR{ 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+        std::array<uint8_t, 6> espDestAddr_ = BROADCAST_ADDR;
+
+        static bool readBinaryProtocolToBuffer(HardwareSerial* p, uint8_t* buf, uint8_t &pos, uint16_t bufSize);
+
+        virtual void iterateSerial(uint32_t);
+        virtual void iterateEspNow(uint32_t);
+    };
+
+} // namespace ctrl

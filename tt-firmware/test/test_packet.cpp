@@ -68,3 +68,22 @@ TEST(PacketTest, MaxFrameSize) {
     // One byte short should be unfinished
     EXPECT_EQ(isPacketValid(longPkt, FRAME_MAX - 1), PktUnfinished);
 }
+
+TEST(PacketTest, pktSend) {
+    vector<uint8_t> sentData;
+
+    uint8_t payload[] = {0xAB, 0xCD};
+    PktHeader hdr = {0xAC, 0x10, 0x01, sizeof(payload)};
+    comms::pktSend(hdr, payload, sizeof(payload), [&sentData](const uint8_t* data, uint8_t len) {
+        sentData.insert(sentData.end(), data, data + len);
+    });
+
+    // The sent data should be a valid packet with the given header and payload
+    EXPECT_EQ(isPacketValid(sentData.data(), sentData.size()), PktValid);
+    EXPECT_EQ(sentData[0], 0xAC); // Start byte
+    EXPECT_EQ(sentData[1], 0x10); // ID
+    EXPECT_EQ(sentData[2], 0x01); // Type
+    EXPECT_EQ(sentData[3], sizeof(payload)); // Plen
+    EXPECT_EQ(sentData[4], 0xAB); // Payload byte 1
+    EXPECT_EQ(sentData[5], 0xCD); // Payload byte 2
+}

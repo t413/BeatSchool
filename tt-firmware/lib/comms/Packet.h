@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <functional>
 
 namespace comms {
 
@@ -42,9 +43,13 @@ enum PktReadState {
 static constexpr uint8_t PAYLOAD_OFFSET = sizeof(PktHeader);
 
 PktReadState isPacketValid(const uint8_t* pkt, const uint16_t len);
-uint8_t checksum(const uint8_t* buf, uint16_t len);
+uint8_t checksum(const uint8_t* buf, uint16_t len, uint8_t startval = 0);
 
 uint8_t pktSerialize(uint8_t id, uint8_t type, const uint8_t* payload, const uint8_t payloadLen, uint8_t* buf, uint16_t buflen);
+
+// defines function to write data (like Serial.write)
+using PktSendFunc = std::function<void(const uint8_t* data, uint8_t len)>;
+void pktSend(const PktHeader& hdr, const uint8_t* payload, uint8_t plen, PktSendFunc sendFunc);
 
 
 // ============================================================
