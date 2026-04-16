@@ -17,7 +17,7 @@ namespace ctrl {
         virtual void setupESPNow();
         virtual void setupHandler(PktHandler* h) { extraHandler_ = h; }
 
-        virtual void loop();
+        virtual void iterate(uint32_t now) override;
         virtual bool isBase() const { return true; }
 
         virtual bool handlePacket(const comms::PktHeader&, const uint8_t* payload, uint8_t plen, MsgDest from) override;

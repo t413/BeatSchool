@@ -3,7 +3,7 @@
 #include <FastLED.h>
 #include <Wire.h>
 #include <SystemCtrl.h>
-#include <NodeController.h>
+#include <ImuApp.h>
 
 #define LED_PIN      2
 #define NUM_LEDS     45
@@ -14,12 +14,7 @@
 CRGB leds[NUM_LEDS];
 
 ctrl::SystemCtrl systemctrl(GIT_VERSION);
-
-bool detectHasIMU() {
-    Wire.begin(IMU_SDA, IMU_SCL);
-    Wire.beginTransmission(IMU_ADDR);
-    return (Wire.endTransmission() == 0) ? true : false;
-}
+ctrl::ImuApp imuApp;
 
 void setup() {
     Serial.begin(115200);
@@ -32,17 +27,17 @@ void setup() {
     systemctrl.setupLeds(leds, NUM_LEDS);
     systemctrl.setupESPNow();
 
-    bool hasIMU = detectHasIMU();
-
-    if (hasIMU) {
-        Serial.println("[IMU] Detected MPU6050 on I2C");
-        //TODO add NodeController or similar handler
-        // if (!nodeCtrl->imuOk()) {
+    Serial.println("[IMU] Testing for MPU6050 on I2C");
+    if (imuApp.trySetupImu(IMU_SDA, IMU_SCL, IMU_ADDR)) {
+        Serial.println("[IMU] IMU connection OK");
+        imuApp.setup(&systemctrl);
+    } else {
+        Serial.println("[IMU] IMU initialization failed");
     }
     Serial.printf("\n[Setup] Booted version %s\n", GIT_VERSION);
 }
 
 void loop() {
-    systemctrl.loop();
+    systemctrl.iterate(millis());
     yield();
 }

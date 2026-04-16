@@ -16,6 +16,7 @@ namespace ctrl {
     class PktHandler {
     public:
         virtual bool handlePacket(const comms::PktHeader&, const uint8_t* payload, uint8_t plen, MsgDest) = 0;
+        virtual void iterate(uint32_t now) { }
     };
 
 } // namespace ctrl

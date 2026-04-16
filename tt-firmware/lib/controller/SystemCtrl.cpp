@@ -51,12 +51,14 @@ namespace ctrl {
         esp_now_add_peer(espDestAddr_.data(), ESP_NOW_ROLE_SLAVE, 1, nullptr, 0);
     }
 
-    void SystemCtrl::loop() {
-        auto now = millis();
+    void SystemCtrl::iterate(uint32_t now) {
         iterateSerial(now);
         iterateEspNow(now);
         if (ledCtrl_) {
             ledCtrl_->iterate(now);
+        }
+        if (extraHandler_) {
+            extraHandler_->iterate(now);
         }
     }
 

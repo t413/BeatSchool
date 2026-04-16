@@ -1,5 +1,6 @@
 #include "ImuApp.h"
 #include "SystemCtrl.h"
+#include <MPU6050.h>
 #include <math.h>
 
 namespace ctrl {
@@ -7,18 +8,25 @@ namespace ctrl {
 ImuApp::ImuApp() { }
 
 void ImuApp::setup(SystemCtrl* sys) {
-    sys_ = sys;
-    imu_.initialize();
-    // _lastBeatMs = millis();
+    if (sys_) {
+        sys_ = sys;
+        sys_->setupHandler(this);
+    }
 }
 
-bool ImuApp::imuOk() {
-    return imu_.testConnection();
+bool ImuApp::trySetupImu(int imu_sda, int imu_scl, int imu_addr) {
+    Wire.begin(imu_sda, imu_scl);
+    Wire.beginTransmission(imu_addr);
+    if (Wire.endTransmission() == 0) {
+        imu_ = new MPU6050(imu_addr);
+        imu_->initialize();
+        return imu_->testConnection();
+    } else {
+        return false;
+    }
 }
 
-void ImuApp::iterate() {
-    uint32_t now = millis();
-
+void ImuApp::iterate(uint32_t now) {
     if (now - lastImuReadMs_ >= IMU_INTERVAL_MS) {
         lastImuReadMs_ = now;
         readImu();
@@ -29,10 +37,14 @@ void ImuApp::iterate() {
     }
 }
 
+bool ImuApp::handlePacket(const comms::PktHeader&, const uint8_t* payload, uint8_t plen, MsgDest from) {
+    return false;
+}
+
 void ImuApp::readImu() {
     comms::ImuPayload p = {};
     int16_t gz = 0;
-    imu_.getMotion6(&p.ax, &p.ay, &p.az, &p.gx, &p.gy, &gz);
+    imu_->getMotion6(&p.ax, &p.ay, &p.az, &p.gx, &p.gy, &gz);
 
     float fax = p.ax / 16384.0f;
     float fay = p.ay / 16384.0f;
