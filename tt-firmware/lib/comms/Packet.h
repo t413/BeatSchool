@@ -86,7 +86,9 @@ static constexpr uint8_t ImuPayloadSize = sizeof(ImuPayload);
 struct __attribute__((__packed__)) SetStatePayload {
     uint16_t node_id;
     uint8_t led_mode;
-    uint8_t r, g, b;
+    uint32_t color;
+    uint32_t param1;
+    uint32_t param2;
 };
 static constexpr uint8_t SetStatePayloadSize = sizeof(SetStatePayload);
 #pragma pack(pop)

@@ -2,6 +2,7 @@
 #include <cstdint>
 
 class CRGB;
+namespace comms { struct SetStatePayload; }
 
 namespace ctrl {
 
@@ -11,6 +12,8 @@ namespace ctrl {
         Beat = 2,
         Spotlight = 3,
     };
+
+    #define NOT_SET (-1)
 
     class LEDCtrl {
     public:
@@ -23,7 +26,8 @@ namespace ctrl {
         void off();
         void doSolidEffect(uint32_t color);
         void doBeatEffect(uint32_t color, uint32_t period);
-        void doSpotlightEffect(float dir, float magnitude, uint32_t period);
+        void doSpotlightEffect(float dir=NOT_SET, float magnitude=NOT_SET, uint32_t period=NOT_SET);
+        void handleCmd(const comms::SetStatePayload&);
 
     protected:
         CRGB*    leds_ = nullptr;

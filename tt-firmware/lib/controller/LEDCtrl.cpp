@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <math.h>
 #include <FastLED.h>
+#include <Packet.h>
 
 namespace ctrl {
 
@@ -39,11 +40,20 @@ namespace ctrl {
     void LEDCtrl::doSpotlightEffect(float dir, float magnitude, uint32_t period) {
         if (alertOverrideEndMs_) return;
         ledMode_ = LedMode::Spotlight;
-        ledEffectParamA_ = dir;
-        ledEffectParamB_ = magnitude;
-        ledParamPeriod_ = period;
+        ledEffectParamA_ = dir != NOT_SET? dir : ledEffectParamA_;
+        ledEffectParamB_ = magnitude != NOT_SET? magnitude : ledEffectParamB_;
+        ledParamPeriod_ = period != NOT_SET? period : ledParamPeriod_;
     }
 
+    void LEDCtrl::handleCmd(const comms::SetStatePayload& pkt) {
+        uint32_t clr = pkt.color != NOT_SET? pkt.color : ledParamClr_;
+        switch ((LedMode)pkt.led_mode) {
+            case LedMode::OFF:       off(); break;
+            case LedMode::Solid:     doSolidEffect(clr); break;
+            case LedMode::Beat:      doBeatEffect(clr, pkt.param1); break;
+            case LedMode::Spotlight: doSpotlightEffect(-1, -1, pkt.param1); break;
+        }
+    }
 
     void LEDCtrl::iterate(const uint32_t now) {
         if (alertOverrideEndMs_ && now > alertOverrideEndMs_) {

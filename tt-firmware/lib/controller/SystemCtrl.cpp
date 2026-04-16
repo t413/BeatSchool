@@ -61,13 +61,25 @@ namespace ctrl {
     }
 
     bool SystemCtrl::handlePacket(const comms::PktHeader& h, const uint8_t* payload, uint8_t plen, MsgDest src) {
-        bool handled = (h.id == address_);
-
-        if (extraHandler_) {
-            handled |= extraHandler_->handlePacket(h, payload, plen, src);
+        if (h.id != address_ || h.id != 0) {
+            return false; // packet not for us, ignore
         }
+        bool handled = extraHandler_? extraHandler_->handlePacket(h, payload, plen, src) : false;
 
-        //TODO handle commands
+        if (handled) {
+            // handled by extra handler, do nothing here
+        } else if (h.type == comms::CMD_VERSION) {
+            sendMsg(h.id, comms::CMD_VERSION, (const uint8_t*)version_, strlen(version_), src);
+        } else if (h.type == comms::CMD_SET_STATE && plen == sizeof(comms::SetStatePayload)) {
+            auto pkt = reinterpret_cast<const comms::SetStatePayload*>(payload);
+            Serial.printf("[CMD] SetState for node 0x%02X: mode %d, color %08X <%d %d>\n", pkt->node_id, pkt->led_mode, pkt->color, pkt->param1, pkt->param2);
+            if (ledCtrl_) {
+                ledCtrl_->handleCmd(*pkt);
+            }
+        // TODO handle other system cmds like settings get/set, updates, etc
+        } else {
+            handled = false;
+        }
 
         if (handled) {
             lastHandledCmd_ = millis();
