@@ -22,6 +22,8 @@ namespace ctrl {
 
         virtual bool handlePacket(const comms::PktHeader&, const uint8_t* payload, uint8_t plen, MsgDest from) override;
         virtual void sendMsg(uint8_t id, uint8_t type, const uint8_t* payload, uint8_t plen, MsgDest to);
+        virtual LEDCtrl* getLedCtrl() { return ledCtrl_; }
+        virtual uint16_t getAddress() const { return address_; }
 
     protected:
         const char* version_ = nullptr;
@@ -42,6 +44,7 @@ namespace ctrl {
 
         virtual void iterateSerial(uint32_t);
         virtual void iterateEspNow(uint32_t);
+        virtual bool isForwardingNode() const { return extraHandler_ == nullptr; }
     };
 
 } // namespace ctrl

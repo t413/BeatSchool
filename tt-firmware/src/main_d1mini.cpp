@@ -6,7 +6,7 @@
 #include <ImuApp.h>
 
 #define LED_PIN      2
-#define NUM_LEDS     45
+#define NUM_LEDS     32
 #define IMU_SDA      4
 #define IMU_SCL      5
 #define IMU_ADDR     0x68
@@ -23,7 +23,7 @@ void setup() {
 
     FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS)
            .setCorrection(TypicalLEDStrip);
-    FastLED.setBrightness(80);
+    FastLED.setBrightness(255);
     systemctrl.setupLeds(leds, NUM_LEDS);
     systemctrl.setupESPNow();
 

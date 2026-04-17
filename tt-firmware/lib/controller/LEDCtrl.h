@@ -26,7 +26,7 @@ namespace ctrl {
         void off();
         void doSolidEffect(uint32_t color);
         void doBeatEffect(uint32_t color, uint32_t period);
-        void doSpotlightEffect(float dir=NOT_SET, float magnitude=NOT_SET, uint32_t period=NOT_SET);
+        void doSpotlightEffect(float pitch=NOT_SET, float roll=NOT_SET, uint32_t period=NOT_SET);
         void handleCmd(const comms::SetStatePayload&);
 
     protected:

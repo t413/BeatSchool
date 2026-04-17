@@ -22,12 +22,18 @@ namespace ctrl {
 
     static SystemCtrl* sself = nullptr;
 
+    void handleEspNowTx(uint8_t *mac_addr, uint8_t status) {
+        Serial.printf("[ESP-NOW] Send to %02X:%02X:%02X:%02X:%02X:%02X status %d\n", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5], status);
+    }
+
     void handleEspNowRecv(u8 *mac_addr, u8 *data, u8 len) {
         auto res = comms::isPacketValid(data, len);
         if (sself && res == comms::PktValid) {
             const comms::PktHeader* h = reinterpret_cast<const comms::PktHeader*>(data);
             const uint8_t* payload = data + comms::PAYLOAD_OFFSET;
             sself->handlePacket(*h, payload, h->plen, MsgDest::EspNow);
+        } else {
+            Serial.printf("[ESP-NOW] invalid pkt len %d, res %d\n", len, (int)res);
         }
     }
 
@@ -45,10 +51,11 @@ namespace ctrl {
             if (ledCtrl_) { ledCtrl_->showAlert(CRGB::Blue, 500); }
         }
         esp_now_set_self_role(ESP_NOW_ROLE_COMBO);
-        // esp_now_register_send_cb([self](const uint8_t *data, size_t len) {
         sself = this;
+        esp_now_register_send_cb(handleEspNowTx);
         esp_now_register_recv_cb(handleEspNowRecv);
-        esp_now_add_peer(espDestAddr_.data(), ESP_NOW_ROLE_SLAVE, 1, nullptr, 0);
+        auto res = esp_now_add_peer(const_cast<uint8_t*>(BROADCAST_ADDR.data()), ESP_NOW_ROLE_SLAVE, 0, nullptr, 0);
+        Serial.printf("ESP-NOW add peer res: %d\n", res);
     }
 
     void SystemCtrl::iterate(uint32_t now) {
@@ -63,30 +70,33 @@ namespace ctrl {
     }
 
     bool SystemCtrl::handlePacket(const comms::PktHeader& h, const uint8_t* payload, uint8_t plen, MsgDest src) {
-        if (h.id != address_ || h.id != 0) {
+        bool isLikelyForUs = (h.id != address_ && h.id != 0);
+        if (!isForwardingNode() && !isLikelyForUs) {
+            Serial.printf("[CMD] Packet id 0x%02X does not match our address, ignoring\n", h.id);
             return false; // packet not for us, ignore
         }
-        bool handled = extraHandler_? extraHandler_->handlePacket(h, payload, plen, src) : false;
+        bool handled = (extraHandler_ && isLikelyForUs)? extraHandler_->handlePacket(h, payload, plen, src) : false;
 
         if (handled) {
             // handled by extra handler, do nothing here
-        } else if (h.type == comms::CMD_VERSION) {
+        } else if (isLikelyForUs && h.type == comms::CMD_VERSION) {
             sendMsg(h.id, comms::CMD_VERSION, (const uint8_t*)version_, strlen(version_), src);
-        } else if (h.type == comms::CMD_SET_STATE && plen == sizeof(comms::SetStatePayload)) {
+        } else if (isLikelyForUs && h.type == comms::CMD_SET_STATE && plen == sizeof(comms::SetStatePayload)) {
             auto pkt = reinterpret_cast<const comms::SetStatePayload*>(payload);
             Serial.printf("[CMD] SetState for node 0x%02X: mode %d, color %08X <%d %d>\n", pkt->node_id, pkt->led_mode, pkt->color, pkt->param1, pkt->param2);
             if (ledCtrl_) {
                 ledCtrl_->handleCmd(*pkt);
             }
         // TODO handle other system cmds like settings get/set, updates, etc
-        } else {
-            handled = false;
+        } else if (isForwardingNode()) { // forward to other interface
+            auto dest = (src == MsgDest::Uart) ? MsgDest::EspNow : MsgDest::Uart;
+            sendMsg(h.id, h.type, payload, plen, dest);
+        } else { //unhandled
+            Serial.printf("[CMD] Unhandled pkt: id 0x%02X type %d plen %d src %d\n", h.id, h.type, plen, (int)src);
+            return false;
         }
-
-        if (handled) {
-            lastHandledCmd_ = millis();
-        }
-        return handled;
+        lastHandledCmd_ = millis();
+        return true;
     }
 
     void SystemCtrl::sendMsg(uint8_t id, uint8_t type, const uint8_t* payload, uint8_t plen, MsgDest to) {
@@ -99,6 +109,7 @@ namespace ctrl {
         }
         if (to8 & (uint8_t)MsgDest::EspNow) {
             esp_now_send(espDestAddr_.data(), buf, plen + comms::PKT_OVERHEAD);
+            Serial.printf("[NET] Sending pkt id 0x%02X type %d plen %d to ESP-NOW\n", id, type, plen);
         }
     }
 

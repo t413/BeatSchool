@@ -2,7 +2,7 @@
 #include <Packet.h>
 #include <Arduino.h>
 
-class MPU6050_Base;
+class MPU6050;
 
 namespace ctrl {
     class SystemCtrl;
@@ -20,17 +20,16 @@ namespace ctrl {
     private:
         static constexpr uint32_t IMU_INTERVAL_MS  = 20;   // 50 Hz
         static constexpr uint32_t SEND_INTERVAL_MS = 50;   // 20 Hz
+        static constexpr float DRIFT_FACTOR = 0.98f;       // Exponential decay per frame
 
         SystemCtrl* sys_ = nullptr;
-        MPU6050_Base* imu_ = nullptr;
+        MPU6050* imu_ = nullptr;
 
         comms::ImuPayload lastPayload_ = {};
         uint32_t lastImuReadMs_ = 0, lastSendMs_ = 0;
-        float tiltAngle_ = 0;
-        float tiltDir_ = 0;
 
-        void readImu();
-        void sendImu();
+        float pitch_ = 0.0f;   // Integrated pitch angle (degrees)
+        float roll_ = 0.0f;    // Integrated roll angle (degrees)
     };
 
-} // namespace RC
+} // namespace ctrl

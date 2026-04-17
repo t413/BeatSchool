@@ -37,11 +37,11 @@ namespace ctrl {
         ledParamClr_ = color;
         ledParamPeriod_ = period;
     }
-    void LEDCtrl::doSpotlightEffect(float dir, float magnitude, uint32_t period) {
+    void LEDCtrl::doSpotlightEffect(float pitch, float roll, uint32_t period) {
         if (alertOverrideEndMs_) return;
         ledMode_ = LedMode::Spotlight;
-        ledEffectParamA_ = dir != NOT_SET? dir : ledEffectParamA_;
-        ledEffectParamB_ = magnitude != NOT_SET? magnitude : ledEffectParamB_;
+        ledEffectParamA_ = pitch != NOT_SET? pitch : ledEffectParamA_;
+        ledEffectParamB_ = roll != NOT_SET? roll : ledEffectParamB_;
         ledParamPeriod_ = period != NOT_SET? period : ledParamPeriod_;
     }
 
@@ -76,22 +76,34 @@ namespace ctrl {
             fill_solid(leds_, numLeds_, clr.nscale8(val));
 
         } else if (mode == LedMode::Spotlight) {
-            float phase = (otime % period) / (float)period;
-            float p1       = expf(-powf((phase - 0.15f) / 0.06f, 2.0f));
-            float p2       = expf(-powf((phase - 0.35f) / 0.06f, 2.0f)) * 0.6f;
-            uint8_t redVal = (uint8_t)constrain((p1 + p2) * 60.0f, 0.0f, 50.0f);
+            bool doHeartbeat = false;
+            uint8_t redVal = 0;
 
-            const auto dir = ledEffectParamA_;
-            const auto magnitude = ledEffectParamB_;
-            float center   = ((dir + PI) / (2.0f * PI)) * numLeds_;
-            float bright   = constrain(magnitude / (PI / 2.0f), 0.0f, 1.0f);
+            if (doHeartbeat) {
+                float phase = (otime % period) / (float)period;
+                float p1       = expf(-powf((phase - 0.15f) / 0.06f, 2.0f));
+                float p2       = expf(-powf((phase - 0.35f) / 0.06f, 2.0f)) * 0.6f;
+                redVal = (uint8_t)constrain((p1 + p2) * 60.0f, 0.0f, 50.0f);
+            }
 
-            for (uint8_t i = 0; i < numLeds_; i++) {
+            const float pitch = ledEffectParamA_;
+            const float roll = ledEffectParamB_;
+
+            float angle = atan2f(pitch, roll);
+            float magnitude = sqrtf(pitch * pitch + roll * roll);
+
+            const uint8_t halfLeds = numLeds_ / 2;
+            float center   = ((angle + PI) / (2.0f * PI)) * halfLeds;
+            float bright   = constrain(magnitude / 45.0f, 0.0f, 1.0f);
+            float sigma    = 1.2f;
+
+            for (uint8_t i = 0; i < halfLeds; i++) {
                 float d = (float)i - center;
-                while (d >  numLeds_ / 2.0f) d -= numLeds_;
-                while (d < -numLeds_ / 2.0f) d += numLeds_;
-                uint8_t blue = (uint8_t)(expf(-(d*d) / (2.0f * 3.5f * 3.5f)) * bright * 220.0f);
+                while (d >  halfLeds / 2.0f) d -= halfLeds;
+                while (d < -halfLeds / 2.0f) d += halfLeds;
+                uint8_t blue = (uint8_t)(expf(-(d*d) / (2.0f * sigma * sigma)) * bright * 255.0f);
                 leds_[i] = CRGB(redVal, 0, blue);
+                leds_[i + halfLeds] = CRGB(redVal, 0, blue);
             }
         }
         FastLED.show();

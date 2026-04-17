@@ -78,8 +78,7 @@ enum LedMode : uint8_t {
 struct __attribute__((__packed__)) ImuPayload {
     uint16_t node_id;
     uint16_t seq;
-    int16_t  ax, ay, az;
-    int16_t  gx, gy;
+    float pitch, roll;
 };
 static constexpr uint8_t ImuPayloadSize = sizeof(ImuPayload);
 
