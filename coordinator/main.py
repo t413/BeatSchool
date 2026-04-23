@@ -155,24 +155,21 @@ def main():
     global reader
 
     parser = argparse.ArgumentParser(description="RhythmClass coordinator")
-    parser.add_argument("--port",  default="/dev/tty.usbserial-0001", help="Serial port of ESP-Now bridge")
+    parser.add_argument("--port",  help="Serial port of ESP-Now bridge")
     parser.add_argument("--baud",  type=int, default=115200)
     parser.add_argument("--host",  default="0.0.0.0")
     parser.add_argument("--http-port", type=int, default=5000)
-    parser.add_argument("--no-serial", action="store_true", help="Start without serial (UI dev mode)")
     args = parser.parse_args()
 
-    if not args.no_serial:
+    if reader or (os.environ.get("WERKZEUG_RUN_MAIN") != "true"):
+        log.info("Reloader parent process detected, skipping serial init...")
+    elif args.port:
         reader = SerialReader(args.port, args.baud, registry)
         reader.start()
-    else:
-        log.warning("--no-serial: running without serial port (UI development mode)")
+    else: log.warning("--no-serial: running without serial port (UI development mode)")
 
     log.info(f"Starting Flask on {args.host}:{args.http_port}")
-    # Use threaded=True so SSE and regular requests don't block each other.
-    # Do NOT use the reloader — it would double-start the serial thread.
-    app.run(host=args.host, port=args.http_port, threaded=True, use_reloader=False)
-
+    app.run(host=args.host, port=args.http_port, threaded=True, use_reloader=True)
 
 if __name__ == "__main__":
     main()
