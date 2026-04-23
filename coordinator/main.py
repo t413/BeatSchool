@@ -1,0 +1,178 @@
+# main.py
+# Flask coordinator backend.
+# Run with:  python main.py --port /dev/tty.usbserial-XXXX
+#
+# Routes:
+#   GET  /               → serves webroot/index.html
+#   GET  /api/nodes      → JSON snapshot of all node states
+#   GET  /api/nodes/<id> → JSON snapshot of one node (id as hex string e.g. 0xa4)
+#   GET  /api/events     → SSE stream, emits updated node state on each change
+#   POST /api/ping       → broadcast CMD_PING
+#   POST /api/set_state  → send CMD_SET_STATE  body: {node_id, led_mode, r, g, b}
+
+import argparse
+import json
+import logging
+import os
+import time
+
+from flask import Flask, Response, jsonify, request, stream_with_context
+
+import packet as pkt
+from node_registry import NodeRegistry
+from serial_reader import SerialReader
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# App setup
+# ---------------------------------------------------------------------------
+WEBROOT = os.path.join(os.path.dirname(__file__), "webroot")
+
+app = Flask(__name__, static_folder=WEBROOT, static_url_path="")
+
+registry = NodeRegistry()
+reader: SerialReader | None = None   # initialised in main()
+
+
+# ---------------------------------------------------------------------------
+# Routes — static
+# ---------------------------------------------------------------------------
+@app.route("/", methods=["GET"])
+def index():
+    return app.send_static_file("index.html")
+
+
+# ---------------------------------------------------------------------------
+# Routes — REST API
+# ---------------------------------------------------------------------------
+@app.route("/api/nodes", methods=["GET"])
+def api_nodes():
+    return jsonify(registry.all_nodes())
+
+
+@app.route("/api/nodes/<node_id_str>", methods=["GET"])
+def api_node(node_id_str: str):
+    try:
+        node_id = int(node_id_str, 0)   # accepts 0xa4, 164, 0xA4
+    except ValueError:
+        return jsonify({"error": "invalid node id"}), 400
+
+    node = registry.get_node(node_id)
+    if node is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(node)
+
+
+@app.route("/api/ping", methods=["POST"])
+def api_ping():
+    if reader:
+        reader.send(pkt.encode_ping())
+        return jsonify({"ok": True})
+    return jsonify({"error": "serial not connected"}), 503
+
+
+@app.route("/api/set_state", methods=["POST"])
+def api_set_state():
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        node_id  = int(data["node_id"], 0) if isinstance(data.get("node_id"), str) else int(data["node_id"])
+        led_mode = int(data.get("led_mode", pkt.LED_MODE_IMU))
+        r        = int(data.get("r", 0))
+        g        = int(data.get("g", 0))
+        b        = int(data.get("b", 0))
+    except (KeyError, TypeError, ValueError) as e:
+        return jsonify({"error": f"bad params: {e}"}), 400
+
+    payload = pkt.encode_set_state(node_id, led_mode, r, g, b)
+    if reader:
+        reader.send(payload)
+        return jsonify({"ok": True, "bytes": list(payload)})
+    return jsonify({"error": "serial not connected"}), 503
+
+
+# ---------------------------------------------------------------------------
+# SSE stream
+# ---------------------------------------------------------------------------
+@app.route("/api/events", methods=["GET"])
+def api_events():
+    """
+    Server-Sent Events endpoint.
+    On each node update the client receives:
+        event: node_update
+        data: <JSON of full nodes snapshot>
+
+    Also sends a heartbeat comment every 15s to keep the connection alive
+    through proxies.
+    """
+    def generate():
+        q = registry.subscribe()
+        last_heartbeat = time.time()
+        try:
+            while True:
+                # Block for up to 15s waiting for an update
+                try:
+                    import queue
+                    q.get(timeout=15)
+                    # Drain any queued-up updates and send one combined snapshot
+                    while not q.empty():
+                        try:
+                            q.get_nowait()
+                        except queue.Empty:
+                            break
+                    snapshot = json.dumps(registry.all_nodes())
+                    yield f"event: node_update\ndata: {snapshot}\n\n"
+                    last_heartbeat = time.time()
+
+                except Exception:
+                    # Timeout — send SSE comment as keepalive
+                    yield ": keepalive\n\n"
+                    last_heartbeat = time.time()
+
+        except GeneratorExit:
+            pass
+        finally:
+            registry.unsubscribe(q)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",   # disable nginx buffering if behind proxy
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Entrypoint
+# ---------------------------------------------------------------------------
+def main():
+    global reader
+
+    parser = argparse.ArgumentParser(description="RhythmClass coordinator")
+    parser.add_argument("--port",  default="/dev/tty.usbserial-0001", help="Serial port of ESP-Now bridge")
+    parser.add_argument("--baud",  type=int, default=115200)
+    parser.add_argument("--host",  default="0.0.0.0")
+    parser.add_argument("--http-port", type=int, default=5000)
+    parser.add_argument("--no-serial", action="store_true", help="Start without serial (UI dev mode)")
+    args = parser.parse_args()
+
+    if not args.no_serial:
+        reader = SerialReader(args.port, args.baud, registry)
+        reader.start()
+    else:
+        log.warning("--no-serial: running without serial port (UI development mode)")
+
+    log.info(f"Starting Flask on {args.host}:{args.http_port}")
+    # Use threaded=True so SSE and regular requests don't block each other.
+    # Do NOT use the reloader — it would double-start the serial thread.
+    app.run(host=args.host, port=args.http_port, threaded=True, use_reloader=False)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,99 @@
+# node_registry.py
+# Holds the last-known state for every node seen on the network.
+# Thread-safe: serial_reader writes from its thread; Flask reads from the main thread.
+
+import time
+import threading
+from dataclasses import dataclass, field, asdict
+from typing import Dict, Optional
+
+from packet import Packet, ImuPayload
+
+
+@dataclass
+class NodeState:
+    pyld: ImuPayload
+    last_seen: float = field(default_factory=time.time)
+    packet_count: int = 0
+    # Future: scoring fields go here
+    # beat_score: float = 0.0
+    # streak: int = 0
+
+
+class NodeRegistry:
+    STALE_TIMEOUT_S = 5.0   # seconds before a node is considered offline
+
+    def __init__(self):
+        self._nodes: Dict[int, NodeState] = {}
+        self._lock = threading.Lock()
+        # Subscribers for SSE: list of queue.Queue
+        self._subscribers: list = []
+        self._sub_lock = threading.Lock()
+
+    # ------------------------------------------------------------------
+    # Write path (called from serial reader thread)
+    # ------------------------------------------------------------------
+    def update(self, pkt: Packet):
+        with self._lock:
+            pyld = pkt.payload
+            if not isinstance(pyld, ImuPayload):
+                print(f"skipping non-IMU packet in registry update: {pkt}")
+                return
+            node = self._nodes.get(pyld.node_id)
+            if node is None:
+                node = NodeState(pyld=pyld)
+                self._nodes[pyld.node_id] = node
+            else: node.pyld = pyld
+            node.last_seen = time.time()
+            node.packet_count += 1
+
+        self._notify_subscribers(pyld.node_id)
+
+    # ------------------------------------------------------------------
+    # Read path (called from Flask threads)
+    # ------------------------------------------------------------------
+    def all_nodes(self) -> dict:
+        now = time.time()
+        with self._lock:
+            result = {}
+            for nid, state in self._nodes.items():
+                d = asdict(state)
+                d["online"] = (now - state.last_seen) < self.STALE_TIMEOUT_S
+                result[hex(nid)] = d
+            return result
+
+    def get_node(self, node_id: int) -> Optional[dict]:
+        now = time.time()
+        with self._lock:
+            node = self._nodes.get(node_id)
+            if node is None:
+                return None
+            d = asdict(node)
+            d["online"] = (now - node.last_seen) < self.STALE_TIMEOUT_S
+            return d
+
+    # ------------------------------------------------------------------
+    # SSE pub/sub
+    # ------------------------------------------------------------------
+    def subscribe(self):
+        """Return a new queue that receives node_id ints on each update."""
+        import queue
+        q = queue.Queue(maxsize=64)
+        with self._sub_lock:
+            self._subscribers.append(q)
+        return q
+
+    def unsubscribe(self, q):
+        with self._sub_lock:
+            try:
+                self._subscribers.remove(q)
+            except ValueError:
+                pass
+
+    def _notify_subscribers(self, node_id: int):
+        with self._sub_lock:
+            for q in self._subscribers:
+                try:
+                    q.put_nowait(node_id)
+                except Exception:
+                    pass  # full queue: drop, subscriber will catch up
