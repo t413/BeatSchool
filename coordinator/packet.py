@@ -44,6 +44,8 @@ class ImuPayload:
     @staticmethod
     def from_bytes(data: bytes) -> 'ImuPayload':
         return ImuPayload(*struct.unpack(ImuPayload.PACK_FMT, data[:14]))
+    def __str__(self) -> str:
+        return f"node=0x{self.node_id:02X}, seq={self.seq}, pitch={self.pitch:+7.2f}, roll={self.roll:+7.2f}"
 
 @dataclass
 class SetStatePayload:
@@ -71,12 +73,17 @@ class SetStatePayload:
     def from_rgb(cls, node_id: int, led_mode: LedMode, r: int, g: int, b: int, p1=0, p2=0):
         return cls(node_id, led_mode, ((r&0xFF)<<16)|((g&0xFF)<<8)|(b&0xFF), p1, p2)
 
+    def __str__(self) -> str:
+        return f"target=0x{self.node_id:02X}, mode={self.led_mode.name}, color=0x{self.color:06X}"
+
 @dataclass
 class PingPayload:
     """Ping: no data"""
     SIZE = 0
     TYPE = Cmd.PING
     def to_bytes(self) -> bytes: return b''
+    def __str__(self) -> str: return ""
+
     @staticmethod
     def from_bytes(data: bytes) -> 'PingPayload': return PingPayload()
 
@@ -86,6 +93,8 @@ class VersionPayload:
     version: str = ""
     TYPE = Cmd.VERSION
     def to_bytes(self) -> bytes: return self.version.encode('ascii')
+    def __str__(self) -> str: return f"ver={self.version}"
+
     @staticmethod
     def from_bytes(data: bytes) -> 'VersionPayload': return VersionPayload(data.decode('ascii', errors='replace'))
 
@@ -97,6 +106,7 @@ class UnknownPayload:
     @property
     def size(self) -> int: return len(self.data)
     def to_bytes(self) -> bytes: return self.data
+    def __str__(self) -> str: return f"raw={self.data.hex()}"
 
 # --- Payload Registry ---
 _PAYLOADS = {
@@ -178,12 +188,7 @@ class Packet:
         return cls(id=src_id, type=Cmd.SET_STATE, payload=SetStatePayload.from_rgb(node_id, led_mode, r, g, b, p1, p2))
 
     def __str__(self) -> str:
-        p = self.payload
-        if isinstance(p, ImuPayload):
-            return f"Packet(id=0x{self.id:02X}, {self.type.name}, seq={p.seq}, pitch={p.pitch:.2f}, roll={p.roll:.2f})"
-        if isinstance(p, SetStatePayload):
-            return f"Packet(id=0x{self.id:02X}, {self.type.name}, node=0x{p.node_id:04X}, led={p.led_mode.name})"
-        return f"Packet(id=0x{self.id:02X}, {self.type.name})"
+        return f"Packet(id=0x{self.id:02X}, {self.type.name} {self.payload})"
 
 
 # --- Backward compatibility ---

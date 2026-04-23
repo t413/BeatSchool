@@ -16,6 +16,7 @@ class NodeState:
     last_seen: float = field(default_factory=time.time)
     packet_count: int = 0
     # Future: scoring fields go here
+    _last_print_count: int = 0
     # beat_score: float = 0.0
     # streak: int = 0
 
@@ -29,6 +30,25 @@ class NodeRegistry:
         # Subscribers for SSE: list of queue.Queue
         self._subscribers: list = []
         self._sub_lock = threading.Lock()
+        self._last_print_time = time.time()
+
+    def _print_status(self):
+        now = time.time()
+        dt = now - self._last_print_time
+        if dt < 1.0:
+            return
+        with self._lock:
+            for nid, state in sorted(self._nodes.items()):
+                online = (now - state.last_seen) < self.STALE_TIMEOUT_S
+                status = "ON" if online else "OFF"
+
+                # Calculate rate
+                diff_pkts = state.packet_count - state._last_print_count
+                rate = diff_pkts / dt
+                state._last_print_count = state.packet_count
+
+                print(f"[{status}] 0x{nid:02x}: {rate:4.1f} pkts/s | {state.pyld}")
+        self._last_print_time = now
 
     # ------------------------------------------------------------------
     # Write path (called from serial reader thread)
@@ -47,6 +67,7 @@ class NodeRegistry:
             node.last_seen = time.time()
             node.packet_count += 1
 
+        self._print_status()
         self._notify_subscribers(pyld.node_id)
 
     # ------------------------------------------------------------------

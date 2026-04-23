@@ -115,5 +115,4 @@ class SerialReader:
         return buf
 
     def handle_pkt(self, pkt: pkt.Packet):
-        print(f"Received pkt: {pkt}")
         self._registry.update(pkt)
