@@ -84,7 +84,7 @@ class SerialReader:
         """
         while len(buf) > 0:
             # 1. If we find a start byte at the beginning, try to parse a packet
-            if buf[0] == pkt.PKT_STARTBYTE:
+            if buf[0] == pkt.STARTBYTE:
                 if len(buf) < pkt.PKT_OVERHEAD:
                     break  # Wait for more data
 
@@ -96,7 +96,7 @@ class SerialReader:
                         break  # Wait for full payload
 
                     raw = bytes(buf[:total_len])
-                    if (decoded := pkt.decode(raw)) is not None:
+                    if (decoded := pkt.Packet.from_bytes(raw)) is not None:
                         self.handle_pkt(decoded)
                         buf = buf[total_len:]
                         continue
@@ -106,7 +106,7 @@ class SerialReader:
             # We treat everything until that point as extraneous text.
             idx = 1
             while idx < len(buf):
-                if buf[idx] == pkt.PKT_STARTBYTE or buf[idx] == ord('\n') or idx > 256:
+                if buf[idx] == pkt.STARTBYTE or buf[idx] == ord('\n') or idx > 256:
                     break
                 idx += 1
             skipped = buf[:idx]

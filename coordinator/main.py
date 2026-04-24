@@ -71,27 +71,24 @@ def api_node(node_id_str: str):
 @app.route("/api/ping", methods=["POST"])
 def api_ping():
     if reader:
-        reader.send(pkt.encode_ping())
-        return jsonify({"ok": True})
+        pyld = pkt.Packet.ping(pkt.COORDINATOR_ID).to_bytes()
+        reader.send(pyld)
+        return jsonify({"ok": True, "sent": str(pyld)})
     return jsonify({"error": "serial not connected"}), 503
 
 
 @app.route("/api/set_state", methods=["POST"])
 def api_set_state():
+    pyld = pkt.SetStatePayload(0, pkt.LedMode.IMU)
     data = request.get_json(force=True, silent=True) or {}
-    try:
-        node_id  = int(data["node_id"], 0) if isinstance(data.get("node_id"), str) else int(data["node_id"])
-        led_mode = int(data.get("led_mode", pkt.LED_MODE_IMU))
-        r        = int(data.get("r", 0))
-        g        = int(data.get("g", 0))
-        b        = int(data.get("b", 0))
-    except (KeyError, TypeError, ValueError) as e:
-        return jsonify({"error": f"bad params: {e}"}), 400
-
-    payload = pkt.encode_set_state(node_id, led_mode, r, g, b)
+    for key, value in data.items():
+        if hasattr(pyld, key):
+            val = pkt.LedMode(value) if key == "led_mode" else value
+            setattr(pyld, key, val)
+    packet = pkt.Packet(pyld.node_id, pyld.TYPE, pyld)
     if reader:
-        reader.send(payload)
-        return jsonify({"ok": True, "bytes": list(payload)})
+        reader.send(packet.to_bytes())
+        return jsonify({"ok": True, "sent": str(packet)})
     return jsonify({"error": "serial not connected"}), 503
 
 

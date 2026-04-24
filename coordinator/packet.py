@@ -132,7 +132,7 @@ class Packet:
 
     @property
     def plen(self) -> int:
-        return getattr(self.payload, 'SIZE', len(self.payload.data)) if self.payload else 0
+        return getattr(self.payload, 'SIZE', len(self.payload.to_bytes()) if self.payload else 0)
 
     def _checksum(self, data: bytes) -> int:
         cs = 0
@@ -140,8 +140,8 @@ class Packet:
         return cs
 
     def to_bytes(self) -> bytes:
-        header = bytes([STARTBYTE, self.id & 0xFF, self.type & 0xFF, self.plen & 0xFF])
         payload_bytes = self.payload.to_bytes() if self.payload else b''
+        header = bytes([STARTBYTE, self.id & 0xFF, self.type & 0xFF, len(payload_bytes) & 0xFF])
         return header + payload_bytes + bytes([self._checksum(header + payload_bytes)])
 
     @classmethod
@@ -183,37 +183,5 @@ class Packet:
     def set_state(cls, node_id: int, led_mode: LedMode, color: int = 0, p1=0, p2=0, src_id=COORDINATOR_ID) -> 'Packet':
         return cls(id=src_id, type=Cmd.SET_STATE, payload=SetStatePayload(node_id, led_mode, color, p1, p2))
 
-    @classmethod
-    def set_state_rgb(cls, node_id: int, led_mode: LedMode, r: int, g: int, b: int, p1=0, p2=0, src_id=COORDINATOR_ID) -> 'Packet':
-        return cls(id=src_id, type=Cmd.SET_STATE, payload=SetStatePayload.from_rgb(node_id, led_mode, r, g, b, p1, p2))
-
     def __str__(self) -> str:
         return f"Packet(id=0x{self.id:02X}, {self.type.name} {self.payload})"
-
-
-# --- Backward compatibility ---
-decode = Packet.from_bytes
-
-def encode_ping(src_id: int = COORDINATOR_ID) -> bytes:
-    return Packet.ping(src_id).to_bytes()
-
-def encode_set_state(node_id: int, led_mode: Union[int, LedMode], r=0, g=0, b=0, src_id=COORDINATOR_ID) -> bytes:
-    if isinstance(led_mode, int): led_mode = LedMode(led_mode)
-    return Packet.set_state_rgb(node_id, led_mode, r, g, b, src_id=src_id).to_bytes()
-
-# Legacy aliases
-PKT_STARTBYTE = STARTBYTE
-PKT_SOURCE_ID = COORDINATOR_ID
-CMD_PING, CMD_VERSION, CMD_IMU_DATA, CMD_SET_STATE = Cmd.PING, Cmd.VERSION, Cmd.IMU_DATA, Cmd.SET_STATE
-LED_MODE_IMU, LED_MODE_SOLID, LED_MODE_FLASH, LED_MODE_CHASE, LED_MODE_OFF = LedMode.IMU, LedMode.SOLID, LedMode.FLASH, LedMode.CHASE, LedMode.OFF
-IMU_PAYLOAD_LEN, SET_STATE_PAYLOAD_LEN = 14, 15
-
-@dataclass
-class SendDataPacket:
-    """Legacy compatibility"""
-    node_id: int; seq: int; pitch: float; roll: float
-    @classmethod
-    def from_packet(cls, p: Packet) -> Optional['SendDataPacket']:
-        if isinstance(p.payload, ImuPayload):
-            return cls(p.payload.node_id, p.payload.seq, p.payload.pitch, p.payload.roll)
-        return None
