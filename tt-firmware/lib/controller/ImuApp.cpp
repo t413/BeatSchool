@@ -60,8 +60,8 @@ void ImuApp::iterate(uint32_t now) {
         imu_->update();
 
         // Read gyro data (deg/s)
-        float gyroX = imu_->getGyroX();  // X-axis rotation
-        float gyroY = imu_->getGyroY();  // Y-axis rotation
+        float gyroX = imu_->getGyroY();  // X-axis rotation
+        float gyroY = imu_->getGyroX();  // Y-axis rotation
 
         // Time delta in seconds
         float dt = IMU_INTERVAL_MS / 1000.0f;
@@ -90,7 +90,6 @@ void ImuApp::iterate(uint32_t now) {
             .roll = roll_,
         };
         sys_->sendMsg(0, comms::CMD_IMU_DATA, reinterpret_cast<const uint8_t*>(&p), sizeof(p), MsgDest::EspNow);
-        Serial.printf("[IMU] Pitch: %6.1f° Roll: %6.1f°\n", pitch_, roll_);
         sys_->getLedCtrl()->doSpotlightEffect(pitch_, roll_, NOT_SET);
         lastPayload_ = p;
     }

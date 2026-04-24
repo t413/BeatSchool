@@ -23,7 +23,6 @@ namespace ctrl {
     static SystemCtrl* sself = nullptr;
 
     void handleEspNowTx(uint8_t *mac_addr, uint8_t status) {
-        Serial.printf("[ESP-NOW] Send to %02X:%02X:%02X:%02X:%02X:%02X status %d\n", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5], status);
     }
 
     void handleEspNowRecv(u8 *mac_addr, u8 *data, u8 len) {
@@ -70,9 +69,9 @@ namespace ctrl {
     }
 
     bool SystemCtrl::handlePacket(const comms::PktHeader& h, const uint8_t* payload, uint8_t plen, MsgDest src) {
-        bool isLikelyForUs = (h.id != address_ && h.id != 0);
+        bool isLikelyForUs = (h.id == address_ || h.id == 0);
         if (!isForwardingNode() && !isLikelyForUs) {
-            Serial.printf("[CMD] Packet id 0x%02X does not match our address, ignoring\n", h.id);
+            Serial.printf("[CMD] Packet id 0x%02X does not match our address (0x%02X), ignoring\n", h.id, address_);
             return false; // packet not for us, ignore
         }
         bool handled = (extraHandler_ && isLikelyForUs)? extraHandler_->handlePacket(h, payload, plen, src) : false;
@@ -109,7 +108,6 @@ namespace ctrl {
         }
         if (to8 & (uint8_t)MsgDest::EspNow) {
             esp_now_send(espDestAddr_.data(), buf, plen + comms::PKT_OVERHEAD);
-            Serial.printf("[NET] Sending pkt id 0x%02X type %d plen %d to ESP-NOW\n", id, type, plen);
         }
     }
 
@@ -127,7 +125,7 @@ namespace ctrl {
             if (ledCtrl_) {
                 ledCtrl_->showAlert(0x440011, 600, 1200); //dark violet quick alert to indicate idle ping
             }
-            sendMsg(0, comms::CMD_PING, nullptr, 0, MsgDest::EspNow);
+            sendMsg(0, comms::CMD_PING, nullptr, 0, MsgDest::All);
             Serial.println("[NET] Sent idle ping");
             idlePingLastSent_ = now;
         }

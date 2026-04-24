@@ -35,7 +35,7 @@ namespace ctrl {
         uint8_t serPos_ = 0;
         uint32_t lastHandledCmd_ = 0;
         uint32_t idlePingLastSent_ = 2000;
-        uint32_t idlePingPeriod_ = 5000;
+        uint32_t idlePingPeriod_ = 20000;
 
         static constexpr std::array<uint8_t, 6> BROADCAST_ADDR{ 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
         std::array<uint8_t, 6> espDestAddr_ = BROADCAST_ADDR;
