@@ -64,16 +64,6 @@ enum Cmd : uint8_t {
     CMD_SET_STATE = 0x03,   // coord -> node
 };
 
-// ---- LED mode values (used in CMD_SET_STATE payload) --------------
-enum LedMode : uint8_t {
-    LED_IMU   = 0x00,
-    LED_SOLID = 0x01,
-    LED_FLASH = 0x02,
-    LED_CHASE = 0x03,
-    LED_OFF   = 0xFF,
-};
-
-
 #pragma pack(push, 1)
 struct __attribute__((__packed__)) ImuPayload {
     uint16_t node_id;

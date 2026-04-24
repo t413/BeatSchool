@@ -20,12 +20,10 @@ class Cmd(IntEnum):
     SET_STATE = 0x03
 
 class LedMode(IntEnum):
-    IMU = 0x00
-    SOLID = 0x01
-    FLASH = 0x02
-    CHASE = 0x03
-    OFF = 0xFF
-
+    OFF = 0
+    Solid = 1
+    Beat = 2
+    Spotlight = 3
 # --- Payload Classes ---
 @dataclass
 class ImuPayload:
