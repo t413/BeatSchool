@@ -60,18 +60,13 @@ class SetStatePayload:
     TYPE = Cmd.SET_STATE
     PACK_FMT = '<HBIII'
 
-
     def to_bytes(self) -> bytes:
-        return struct.pack(self.PACK_FMT, self.node_id, self.led_mode, self.color, self.param1, self.param2)
+        return struct.pack(self.PACK_FMT, self.node_id, self.led_mode.value, self.color, self.param1, self.param2)
 
     @staticmethod
     def from_bytes(data: bytes) -> 'SetStatePayload':
         node_id, led_mode, color, param1, param2 = struct.unpack(SetStatePayload.PACK_FMT, data[:15])
         return SetStatePayload(node_id, LedMode(led_mode), color, param1, param2)
-
-    @classmethod
-    def from_rgb(cls, node_id: int, led_mode: LedMode, r: int, g: int, b: int, p1=0, p2=0):
-        return cls(node_id, led_mode, ((r&0xFF)<<16)|((g&0xFF)<<8)|(b&0xFF), p1, p2)
 
     def __str__(self) -> str:
         return f"target=0x{self.node_id:02X}, mode={self.led_mode.name}, color=0x{self.color:06X}"
@@ -172,16 +167,16 @@ class Packet:
 
     # --- Factory methods ---
     @classmethod
-    def ping(cls, src_id: int = COORDINATOR_ID) -> 'Packet':
-        return cls(id=src_id, type=Cmd.PING, payload=PingPayload())
+    def ping(cls, id) -> 'Packet':
+        return cls(id=id, type=Cmd.PING, payload=PingPayload())
 
     @classmethod
     def imu_data(cls, node_id: int, seq: int, pitch: float, roll: float) -> 'Packet':
         return cls(id=node_id, type=Cmd.IMU_DATA, payload=ImuPayload(node_id, seq, pitch, roll))
 
     @classmethod
-    def set_state(cls, node_id: int, led_mode: LedMode, color: int = 0, p1=0, p2=0, src_id=COORDINATOR_ID) -> 'Packet':
-        return cls(id=src_id, type=Cmd.SET_STATE, payload=SetStatePayload(node_id, led_mode, color, p1, p2))
+    def set_state(cls, node_id: int, led_mode: LedMode, color: int = 0, p1=0, p2=0, id=COORDINATOR_ID) -> 'Packet':
+        return cls(id=id, type=Cmd.SET_STATE, payload=SetStatePayload(node_id, led_mode, color, p1, p2))
 
     def __str__(self) -> str:
         return f"Packet(id=0x{self.id:02X}, {self.type.name} {self.payload})"

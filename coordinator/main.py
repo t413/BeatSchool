@@ -10,12 +10,7 @@
 #   POST /api/ping       → broadcast CMD_PING
 #   POST /api/set_state  → send CMD_SET_STATE  body: {node_id, led_mode, r, g, b}
 
-import argparse
-import json
-import logging
-import os
-import time
-
+import os, time, logging, json, argparse, typing
 from flask import Flask, Response, jsonify, request, stream_with_context
 
 import packet as pkt
@@ -71,7 +66,7 @@ def api_node(node_id_str: str):
 @app.route("/api/ping", methods=["POST"])
 def api_ping():
     if reader:
-        pyld = pkt.Packet.ping(pkt.COORDINATOR_ID).to_bytes()
+        pyld = pkt.Packet.ping(0).to_bytes()
         reader.send(pyld)
         return jsonify({"ok": True, "sent": str(pyld)})
     return jsonify({"error": "serial not connected"}), 503
@@ -79,17 +74,26 @@ def api_ping():
 
 @app.route("/api/set_state", methods=["POST"])
 def api_set_state():
+    if not reader:
+        return jsonify({"error": "serial not connected"}), 503
     pyld = pkt.SetStatePayload(0, pkt.LedMode.IMU)
     data = request.get_json(force=True, silent=True) or {}
-    for key, value in data.items():
-        if hasattr(pyld, key):
-            val = pkt.LedMode(value) if key == "led_mode" else value
-            setattr(pyld, key, val)
+    hints = typing.get_type_hints(pyld.__class__)
+    for key, val in data.items():
+        if hasattr(pyld, key) and key in hints:
+            target_type = hints[key]
+            try:
+                if target_type is int and isinstance(val, str):
+                    val = int(val, 0) # allow hex strings for ints
+                setattr(pyld, key, target_type(val))
+            except (ValueError, TypeError):
+                raise ValueError(f"invalid type for {key}, expected {target_type}")
     packet = pkt.Packet(pyld.node_id, pyld.TYPE, pyld)
-    if reader:
-        reader.send(packet.to_bytes())
-        return jsonify({"ok": True, "sent": str(packet)})
-    return jsonify({"error": "serial not connected"}), 503
+    print(f"API set_state: sending {packet}")
+    hex_bytes = ", ".join(f"0x{b:02x}" for b in packet.to_bytes())
+    print(f"pkt binary: [{hex_bytes}]")
+    reader.send(packet.to_bytes())
+    return jsonify({"ok": True, "sent": str(packet)})
 
 
 # ---------------------------------------------------------------------------
