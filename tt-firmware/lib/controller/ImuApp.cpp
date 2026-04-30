@@ -95,8 +95,13 @@ void ImuApp::iterate(uint32_t now) {
     }
 }
 
-bool ImuApp::handlePacket(const comms::PktHeader&, const uint8_t* payload, uint8_t plen, MsgDest from) {
-    return false;
+bool ImuApp::handlePacket(const comms::PktHeader& h, const uint8_t* payload, uint8_t plen, MsgDest from) {
+    if (h.type == comms::CMD_ZERO) { //zero gyros
+        imu_->calcOffsets();
+        return true;
+    } else {
+        return false;
+    }
 }
 
 } // namespace ctrl

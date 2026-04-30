@@ -20,6 +20,7 @@ class Cmd(IntEnum):
     VERSION = 0x01
     IMU_DATA = 0x02
     SET_STATE = 0x03
+    ZERO      = 0x04
 
 class LedMode(IntEnum):
     OFF = 0

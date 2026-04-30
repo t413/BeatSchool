@@ -63,6 +63,13 @@ def api_ping():
     reader.send(pyld)
     return flask.jsonify({"ok": True, "sent": str(pyld)})
 
+@api.route("/zero", methods=["POST"])
+def api_zero():
+    check_serial()
+    pyld = pkt.Packet.ping(0).to_bytes()
+    reader.send(pyld)
+    return flask.jsonify({"ok": True, "sent": str(pyld)})
+
 @api.route("/set_state", methods=["POST"])
 def api_set_state():
     check_serial()

@@ -62,6 +62,7 @@ enum Cmd : uint8_t {
     CMD_VERSION   = 0x01,   // get or reply with program version
     CMD_IMU_DATA  = 0x02,   // node  -> coordinator
     CMD_SET_STATE = 0x03,   // coord -> node
+    CMD_ZERO      = 0x04,   // zero gyros, etc
 };
 
 #pragma pack(push, 1)

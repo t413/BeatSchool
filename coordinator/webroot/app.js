@@ -51,6 +51,16 @@ function renderState(nodes) {
 // ---------------------------------------------------------------------------
 // Controls
 // ---------------------------------------------------------------------------
+async function sendZero() {
+  try {
+    const r = await fetch("/api/zero", { method: "POST" });
+    const j = await r.json();
+    console.log("ping:", j);
+  } catch (e) {
+    console.error("ping failed:", e);
+  }
+}
+
 async function sendPing() {
   try {
     const r = await fetch("/api/ping", { method: "POST" });
