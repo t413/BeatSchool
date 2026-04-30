@@ -59,10 +59,13 @@ void pktSend(const PktHeader& hdr, const uint8_t* payload, uint8_t plen, PktSend
 // ---- command IDs (low byte of id field) ---------------------------
 enum Cmd : uint8_t {
     CMD_PING      = 0x00,   // coord -> broadcast (or relay alive ping)
-    CMD_VERSION   = 0x01,   // get or reply with program version
-    CMD_IMU_DATA  = 0x02,   // node  -> coordinator
-    CMD_SET_STATE = 0x03,   // coord -> node
-    CMD_ZERO      = 0x04,   // zero gyros, etc
+    ERROR         = 0x01,
+    CMD_VERSION   = 0x02,   // get or reply with program version
+
+    CMD_IMU_DATA  = 0xA1,   // node  -> coordinator
+    CMD_SET_STATE = 0xA2,   // coord -> node
+    CMD_ZERO      = 0xA3,   // zero gyros, etc
+
 };
 
 #pragma pack(push, 1)

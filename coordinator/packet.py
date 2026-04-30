@@ -16,11 +16,12 @@ COORDINATOR_ID = 0xFE
 
 # --- Enums ---
 class Cmd(enum.IntEnum):
-    PING = 0x00
-    VERSION = 0x01
-    IMU_DATA = 0x02
-    SET_STATE = 0x03
-    ZERO      = 0x04
+    Ping      = 0x00
+    Error     = 0x01
+    Version   = 0x02
+    IMU_DATA  = 0xA1
+    SET_STATE = 0xA2
+    ZERO      = 0xA3
 
 class LedMode(enum.IntEnum):
     OFF = 0
