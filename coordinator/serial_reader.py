@@ -6,12 +6,7 @@
 # based on the cmd byte. Discard bytes that don't match.
 
 from __future__ import annotations
-
-import serial
-import threading
-import logging
-import time
-
+import serial, threading, logging, time
 import packet as pkt
 from node_registry import NodeRegistry
 
@@ -35,13 +30,17 @@ class SerialReader:
     def stop(self):
         self._running = False
 
-    def send(self, data: bytes):
+    def send(self, data: bytes | pkt.Packet):
+        wassent = data
+        if isinstance(data, pkt.Packet):
+            data = data.to_bytes()
         """Thread-safe write to serial port."""
         if self._ser and self._ser.is_open:
             with self._send_lock:
                 self._ser.write(data)
         else:
             log.warning("send() called but serial port not open")
+        return wassent
 
     # ------------------------------------------------------------------
     # Internal

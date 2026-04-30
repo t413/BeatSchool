@@ -72,17 +72,6 @@ class SetStatePayload:
         return f"mode={self.led_mode.name}, color=0x{self.color:06X}"
 
 @dataclass
-class PingPayload:
-    """Ping: no data"""
-    SIZE = 0
-    TYPE = Cmd.PING
-    def to_bytes(self) -> bytes: return b''
-    def __str__(self) -> str: return ""
-
-    @staticmethod
-    def from_bytes(data: bytes) -> 'PingPayload': return PingPayload()
-
-@dataclass
 class VersionPayload:
     """Version: raw string payload"""
     version: str = ""
@@ -105,7 +94,6 @@ class UnknownPayload:
 
 # --- Payload Registry ---
 _PAYLOADS = {
-    Cmd.PING: PingPayload,
     Cmd.VERSION: VersionPayload,
     Cmd.IMU_DATA: ImuPayload,
     Cmd.SET_STATE: SetStatePayload,
@@ -118,12 +106,10 @@ class Packet:
     from_id: int = COORDINATOR_ID
     to_id: int = 0
     type: Cmd = Cmd.PING
-    payload: None | typing.Union[ImuPayload, SetStatePayload, PingPayload, VersionPayload, UnknownPayload] = None
+    payload: None | typing.Union[ImuPayload, SetStatePayload, VersionPayload, UnknownPayload] = None
     read_from_buf: int = 0
 
     def __post_init__(self):
-        if self.payload is None:
-            self.payload = PingPayload()
         if isinstance(self.type, int):
             self.type = Cmd(self.type)
 
@@ -172,10 +158,6 @@ class Packet:
         return crc & 0xFF
 
     # --- Factory methods ---
-    @classmethod
-    def ping(cls, to_id) -> 'Packet':
-        return cls(to_id=to_id, type=Cmd.PING, payload=PingPayload())
-
     @classmethod
     def imu_data(cls, to_id: int, seq: int, pitch: float, roll: float) -> 'Packet':
         return cls(to_id=to_id, type=Cmd.IMU_DATA, payload=ImuPayload(to_id, seq, pitch, roll))
