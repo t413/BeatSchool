@@ -89,19 +89,15 @@ class SerialReader:
             if buf[0] == pkt.STARTBYTE:
                 if len(buf) < pkt.PKT_OVERHEAD:
                     break  # Wait for more data
-
-                plen = buf[3]
-                total_len = pkt.PKT_OVERHEAD + plen
-
-                if plen <= pkt.PAYLOAD_MAX:
-                    if len(buf) < total_len:
-                        break  # Wait for full payload
-
-                    raw = bytes(buf[:total_len])
-                    if (decoded := pkt.Packet.from_bytes(raw)) is not None:
+                try:
+                    if (decoded := pkt.Packet.from_bytes(buf)) is not None:
                         self.handle_pkt(decoded)
-                        buf = buf[total_len:]
+                        buf = buf[decoded.read_from_buf : ] #remove from incoming buffer
+                        print(f"decoded len({decoded.read_from_buf}) (now {len(buf)} -> {decoded}")
                         continue
+                    else: break #no pkt or exception? partial read
+                except ValueError as e:
+                    print(f"SerialReader {e}")
                 # If length is invalid or decode failed, treat this byte as extraneous
                 # and fall through to the scanning logic below.
             # 2. Scan for the next "event" (Start byte, Newline, or Buffer too big)

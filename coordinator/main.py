@@ -66,6 +66,7 @@ def api_ping():
 @api.route("/zero", methods=["POST"])
 def api_zero():
     check_serial()
+    assert(reader)
     pyld = pkt.Packet.ping(0).to_bytes()
     reader.send(pyld)
     return flask.jsonify({"ok": True, "sent": str(pyld)})
@@ -73,7 +74,8 @@ def api_zero():
 @api.route("/set_state", methods=["POST"])
 def api_set_state():
     check_serial()
-    pyld = pkt.SetStatePayload(0, pkt.LedMode.IMU)
+    assert(reader)
+    pyld = pkt.SetStatePayload(pkt.LedMode.Spotlight)
     data = flask.request.get_json(force=True, silent=True) or {}
     hints = typing.get_type_hints(pyld.__class__)
     for key, val in data.items():
@@ -85,7 +87,7 @@ def api_set_state():
                 setattr(pyld, key, target_type(val))
             except (ValueError, TypeError):
                 raise ValueError(f"invalid type for {key}, expected {target_type}")
-    packet = pkt.Packet(pyld.node_id, pyld.TYPE, pyld)
+    packet = pkt.Packet(type=pyld.TYPE, payload=pyld)
     print(f"API set_state: sending {packet}")
     hex_bytes = ", ".join(f"0x{b:02x}" for b in packet.to_bytes())
     print(f"pkt binary: [{hex_bytes}]")

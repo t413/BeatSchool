@@ -62,16 +62,16 @@ class NodeRegistry:
             if not isinstance(pyld, ImuPayload):
                 print(f"skipping non-IMU packet in registry update: {pkt}")
                 return
-            node = self._nodes.get(pyld.node_id)
+            node = self._nodes.get(pkt.from_id)
             if node is None:
                 node = NodeState(pyld=pyld)
-                self._nodes[pyld.node_id] = node
+                self._nodes[pkt.from_id] = node
             else: node.pyld = pyld
             node.last_seen = time.time()
             node.packet_count += 1
 
         self._print_status()
-        self._notify_subscribers(pyld.node_id)
+        self._notify_subscribers(pkt.from_id)
 
     # ------------------------------------------------------------------
     # Read path (called from Flask threads)
