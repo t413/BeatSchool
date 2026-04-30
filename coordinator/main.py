@@ -12,8 +12,7 @@
 
 from __future__ import annotations
 
-import os, time, logging, json, argparse, typing
-from flask import Flask, Response, jsonify, request, stream_with_context
+import os, time, logging, json, argparse, typing, flask
 
 import packet as pkt
 from node_registry import NodeRegistry
@@ -30,7 +29,8 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 WEBROOT = os.path.join(os.path.dirname(__file__), "webroot")
 
-app = Flask(__name__, static_folder=WEBROOT, static_url_path="")
+app = flask.Flask(__name__, static_folder=WEBROOT, static_url_path="")
+api = flask.Blueprint('api', __name__, url_prefix='/api')
 
 registry = NodeRegistry()
 reader: SerialReader | None = None   # initialised in main()
@@ -47,39 +47,27 @@ def index():
 # ---------------------------------------------------------------------------
 # Routes — REST API
 # ---------------------------------------------------------------------------
-@app.route("/api/nodes", methods=["GET"])
-def api_nodes():
-    return jsonify(registry.all_nodes())
 
-
-@app.route("/api/nodes/<node_id_str>", methods=["GET"])
-def api_node(node_id_str: str):
-    try:
-        node_id = int(node_id_str, 0)   # accepts 0xa4, 164, 0xA4
-    except ValueError:
-        return jsonify({"error": "invalid node id"}), 400
-
-    node = registry.get_node(node_id)
-    if node is None:
-        return jsonify({"error": "not found"}), 404
-    return jsonify(node)
-
-
-@app.route("/api/ping", methods=["POST"])
-def api_ping():
-    if reader:
-        pyld = pkt.Packet.ping(0).to_bytes()
-        reader.send(pyld)
-        return jsonify({"ok": True, "sent": str(pyld)})
-    return jsonify({"error": "serial not connected"}), 503
-
-
-@app.route("/api/set_state", methods=["POST"])
-def api_set_state():
+def check_serial():
     if not reader:
-        return jsonify({"error": "serial not connected"}), 503
+        return flask.jsonify({"error": "serial not connected"}), 503
+
+@api.route("/nodes", methods=["GET"])
+def api_nodes():
+    return flask.jsonify(registry.all_nodes())
+
+@api.route("/ping", methods=["POST"])
+def api_ping():
+    check_serial()
+    pyld = pkt.Packet.ping(0).to_bytes()
+    reader.send(pyld)
+    return flask.jsonify({"ok": True, "sent": str(pyld)})
+
+@api.route("/set_state", methods=["POST"])
+def api_set_state():
+    check_serial()
     pyld = pkt.SetStatePayload(0, pkt.LedMode.IMU)
-    data = request.get_json(force=True, silent=True) or {}
+    data = flask.request.get_json(force=True, silent=True) or {}
     hints = typing.get_type_hints(pyld.__class__)
     for key, val in data.items():
         if hasattr(pyld, key) and key in hints:
@@ -95,13 +83,12 @@ def api_set_state():
     hex_bytes = ", ".join(f"0x{b:02x}" for b in packet.to_bytes())
     print(f"pkt binary: [{hex_bytes}]")
     reader.send(packet.to_bytes())
-    return jsonify({"ok": True, "sent": str(packet)})
-
+    return flask.jsonify({"ok": True, "sent": str(packet)})
 
 # ---------------------------------------------------------------------------
 # SSE stream
 # ---------------------------------------------------------------------------
-@app.route("/api/events", methods=["GET"])
+@api.route("/events", methods=["GET"])
 def api_events():
     """
     Server-Sent Events endpoint.
@@ -141,8 +128,8 @@ def api_events():
         finally:
             registry.unsubscribe(q)
 
-    return Response(
-        stream_with_context(generate()),
+    return flask.Response(
+        flask.stream_with_context(generate()),
         mimetype="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -172,6 +159,7 @@ def main():
     else: log.warning("--no-serial: running without serial port (UI development mode)")
 
     log.info(f"Starting Flask on {args.host}:{args.http_port}")
+    app.register_blueprint(api)
     app.run(host=args.host, port=args.http_port, threaded=True, use_reloader=True)
 
 if __name__ == "__main__":
