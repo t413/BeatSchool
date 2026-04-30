@@ -38,8 +38,10 @@ class NodeRegistry:
         if dt < 1.0:
             return
         with self._lock:
+            ototal = 0
             for nid, state in sorted(self._nodes.items()):
                 online = (now - state.last_seen) < self.STALE_TIMEOUT_S
+                ototal = ototal + 1 if online else ototal
                 status = "ON" if online else "OFF"
 
                 # Calculate rate
@@ -48,6 +50,7 @@ class NodeRegistry:
                 state._last_print_count = state.packet_count
 
                 print(f"[{status}] 0x{nid:02x}: {rate:4.1f} pkts/s | {state.pyld}")
+            print(f"---- {ototal}/{len(self._nodes)} online ----")
         self._last_print_time = now
 
     # ------------------------------------------------------------------
