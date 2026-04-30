@@ -10,6 +10,8 @@
 #   POST /api/ping       → broadcast CMD_PING
 #   POST /api/set_state  → send CMD_SET_STATE  body: {node_id, led_mode, r, g, b}
 
+from __future__ import annotations
+
 import os, time, logging, json, argparse, typing
 from flask import Flask, Response, jsonify, request, stream_with_context
 

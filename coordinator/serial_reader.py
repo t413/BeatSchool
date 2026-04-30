@@ -5,6 +5,8 @@
 # Framing strategy: scan for magic byte 0xAC, then read expected length
 # based on the cmd byte. Discard bytes that don't match.
 
+from __future__ import annotations
+
 import serial
 import threading
 import logging

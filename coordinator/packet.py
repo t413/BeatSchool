@@ -1,6 +1,8 @@
 # packet.py - TTeacher wire protocol (keep in sync with Packet.h)
 # Frame: [startbyte:1][id:1][type:1][plen:1][payload:N][checksum:1]
 
+from __future__ import annotations
+
 import struct
 from dataclasses import dataclass
 from enum import IntEnum
