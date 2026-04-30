@@ -69,9 +69,15 @@ namespace ctrl {
     }
 
     bool SystemCtrl::handlePacket(const comms::PktHeader& h, const uint8_t* payload, uint8_t plen, MsgDest src) {
-        bool isLikelyForUs = (h.id == address_ || h.id == 0);
+        if (isForwardingNode() && h.to != address_) {  //not specifically for us? forward to other interface
+            auto dest = (src == MsgDest::Uart) ? MsgDest::EspNow : MsgDest::Uart;
+            sendMsg(h.to, h.type, payload, plen, dest);
+            return true;
+        }
+
+        bool isLikelyForUs = (h.to == address_ || h.to == 0);
         if (!isForwardingNode() && !isLikelyForUs) {
-            Serial.printf("[CMD] Packet id 0x%02X does not match our address (0x%02X), ignoring\n", h.id, address_);
+            Serial.printf("[CMD] Packet id 0x%02X does not match our address (0x%02X), ignoring\n", h.to, address_);
             return false; // packet not for us, ignore
         }
         bool handled = (extraHandler_ && isLikelyForUs)? extraHandler_->handlePacket(h, payload, plen, src) : false;
@@ -79,30 +85,27 @@ namespace ctrl {
         if (handled) {
             // handled by extra handler, do nothing here
         } else if (isLikelyForUs && h.type == comms::CMD_VERSION) {
-            sendMsg(h.id, comms::CMD_VERSION, (const uint8_t*)version_, strlen(version_), src);
+            sendMsg(h.from, comms::CMD_VERSION, (const uint8_t*)version_, strlen(version_), src);
         } else if (isLikelyForUs && h.type == comms::CMD_SET_STATE && plen == sizeof(comms::SetStatePayload)) {
             auto pkt = reinterpret_cast<const comms::SetStatePayload*>(payload);
-            Serial.printf("[CMD] SetState for node 0x%02X: mode %d, color %08X <%d %d>\n", pkt->node_id, pkt->led_mode, pkt->color, pkt->param1, pkt->param2);
+            Serial.printf("[CMD] SetState for node 0x%02X: mode %d, color %08X <%d %d>\n", pkt->led_mode, pkt->color, pkt->param1, pkt->param2);
             if (ledCtrl_) {
                 ledCtrl_->handleCmd(*pkt);
             }
         // TODO handle other system cmds like settings get/set, updates, etc
-        } else if (isForwardingNode()) { // forward to other interface
-            auto dest = (src == MsgDest::Uart) ? MsgDest::EspNow : MsgDest::Uart;
-            sendMsg(h.id, h.type, payload, plen, dest);
         } else { //unhandled
-            Serial.printf("[CMD] Unhandled pkt: id 0x%02X type %d plen %d src %d\n", h.id, h.type, plen, (int)src);
+            Serial.printf("[CMD] Unhandled pkt: id 0x%02X type %d plen %d src %d\n", h.to, h.type, plen, (int)src);
             return false;
         }
         lastHandledCmd_ = millis();
         return true;
     }
 
-    void SystemCtrl::sendMsg(uint8_t id, uint8_t type, const uint8_t* payload, uint8_t plen, MsgDest to) {
+    void SystemCtrl::sendMsg(uint16_t to_id, uint8_t type, const uint8_t* payload, uint8_t plen, MsgDest to_dest) {
         uint8_t buf[comms::FRAME_MAX] = {0};
-        comms::pktSerialize(id, type, payload, plen, buf, sizeof(buf));
+        comms::pktSerialize(address_, to_id, type, payload, plen, buf, sizeof(buf));
 
-        uint8_t to8 = static_cast<uint8_t>(to);
+        uint8_t to8 = static_cast<uint8_t>(to_dest);
         if (to8 & (uint8_t)MsgDest::Uart) {
             Serial.write(buf, plen + comms::PKT_OVERHEAD);
         }

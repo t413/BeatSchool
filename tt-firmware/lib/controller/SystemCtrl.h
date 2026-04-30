@@ -21,7 +21,7 @@ namespace ctrl {
         virtual bool isBase() const { return true; }
 
         virtual bool handlePacket(const comms::PktHeader&, const uint8_t* payload, uint8_t plen, MsgDest from) override;
-        virtual void sendMsg(uint8_t id, uint8_t type, const uint8_t* payload, uint8_t plen, MsgDest to);
+        virtual void sendMsg(uint16_t to_id, uint8_t type, const uint8_t* payload, uint8_t plen, MsgDest dest);
         virtual LEDCtrl* getLedCtrl() { return ledCtrl_; }
         virtual uint16_t getAddress() const { return address_; }
 

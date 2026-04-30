@@ -84,7 +84,6 @@ void ImuApp::iterate(uint32_t now) {
 
         // Pack into payload
         comms::ImuPayload p = {
-            .node_id = sys_->getAddress(),
             .seq = lastPayload_.seq + 1,
             .pitch = pitch_,
             .roll = roll_,

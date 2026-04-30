@@ -10,7 +10,8 @@ from typing import Optional, Union
 
 # --- Constants ---
 STARTBYTE = 0xAC
-PKT_OVERHEAD = 5
+PKT_HEADER_FMT = '<BHHBB' #start-u8, from-u16, to-u16, type-u8, len-u8
+PKT_OVERHEAD = struct.calcsize(PKT_HEADER_FMT)
 PAYLOAD_MAX = 245
 COORDINATOR_ID = 0xFE
 
@@ -27,6 +28,7 @@ class LedMode(IntEnum):
     Solid = 1
     Beat = 2
     Spotlight = 3
+
 # --- Payload Classes ---
 @dataclass
 class ImuPayload:
@@ -116,7 +118,8 @@ _PAYLOADS = {
 @dataclass
 class Packet:
     """Complete TTeacher protocol packet"""
-    id: int = COORDINATOR_ID
+    from_id: int = COORDINATOR_ID
+    to_id: int = 0
     type: Cmd = Cmd.PING
     payload: None | Union[ImuPayload, SetStatePayload, PingPayload, VersionPayload, UnknownPayload] = None
 
@@ -130,25 +133,20 @@ class Packet:
     def plen(self) -> int:
         return getattr(self.payload, 'SIZE', len(self.payload.to_bytes()) if self.payload else 0)
 
-    def _checksum(self, data: bytes) -> int:
-        cs = 0
-        for b in data: cs ^= b
-        return cs
-
     def to_bytes(self) -> bytes:
         payload_bytes = self.payload.to_bytes() if self.payload else b''
-        header = bytes([STARTBYTE, self.id & 0xFF, self.type & 0xFF, len(payload_bytes) & 0xFF])
-        return header + payload_bytes + bytes([self._checksum(header + payload_bytes)])
+        header = struct.pack('<BHHBB', STARTBYTE, self.from_id, self.to_id, self.type & 0xFF, len(payload_bytes) & 0xFF)
+        return header + payload_bytes + bytes([Packet._checksum(header + payload_bytes)])
 
     @classmethod
     def from_bytes(cls, raw: bytes) -> Optional['Packet']:
         if len(raw) < PKT_OVERHEAD or raw[0] != STARTBYTE:
             return None
-        pkt_id, pkt_type, plen = raw[1], raw[2], raw[3]
+        _, from_id, to_id, pkt_type, plen = struct.unpack(PKT_HEADER_FMT, raw[:PKT_OVERHEAD])
         total = PKT_OVERHEAD + plen
-        if len(raw) < total or cls._xor_checksum(raw[:total-1]) != raw[total-1]:
+        if len(raw) < total or Packet._checksum(raw[:total-1]) != raw[total-1]:
             return None
-        payload_data = raw[4:4+plen]
+        payload_data = raw[PKT_OVERHEAD : PKT_OVERHEAD + plen]
         try:
             cmd = Cmd(pkt_type)
             payload_cls = _PAYLOADS.get(cmd)
@@ -156,28 +154,36 @@ class Packet:
                 payload = payload_cls.from_bytes(payload_data)
             else:
                 payload = UnknownPayload(pkt_type, payload_data)
-        except:
-            payload = UnknownPayload(pkt_type, payload_data)
-        return cls(id=pkt_id, type=cmd, payload=payload)
+        except Exception as e:
+            print(f"Packet decode error: {e}")
+            payload, cmd = UnknownPayload(pkt_type, payload_data), Cmd.PING
+        return cls(from_id=from_id, to_id=to_id, type=cmd, payload=payload)
 
     @staticmethod
-    def _xor_checksum(data: bytes) -> int:
-        cs = 0
-        for b in data: cs ^= b
-        return cs
+    def _checksum(data: bytes) -> int:
+        # CRC-8, polynomial 0x07 (x^8 + x^2 + x^1 + 1)
+        crc = 0
+        for byte in data:
+            crc ^= byte
+            for _ in range(8):
+                if crc & 0x80:
+                    crc = ((crc << 1) ^ 0x07) & 0xFF
+                else:
+                    crc = (crc << 1) & 0xFF
+        return crc
 
     # --- Factory methods ---
     @classmethod
-    def ping(cls, id) -> 'Packet':
-        return cls(id=id, type=Cmd.PING, payload=PingPayload())
+    def ping(cls, to_id) -> 'Packet':
+        return cls(to_id=to_id, type=Cmd.PING, payload=PingPayload())
 
     @classmethod
-    def imu_data(cls, node_id: int, seq: int, pitch: float, roll: float) -> 'Packet':
-        return cls(id=node_id, type=Cmd.IMU_DATA, payload=ImuPayload(node_id, seq, pitch, roll))
+    def imu_data(cls, to_id: int, seq: int, pitch: float, roll: float) -> 'Packet':
+        return cls(to_id=to_id, type=Cmd.IMU_DATA, payload=ImuPayload(to_id, seq, pitch, roll))
 
     @classmethod
-    def set_state(cls, node_id: int, led_mode: LedMode, color: int = 0, p1=0, p2=0, id=COORDINATOR_ID) -> 'Packet':
-        return cls(id=id, type=Cmd.SET_STATE, payload=SetStatePayload(node_id, led_mode, color, p1, p2))
+    def set_state(cls, to_id: int, led_mode: LedMode, color: int = 0, p1=0, p2=0) -> 'Packet':
+        return cls(to_id=to_id, type=Cmd.SET_STATE, payload=SetStatePayload(to_id, led_mode, color, p1, p2))
 
     def __str__(self) -> str:
-        return f"Packet(id=0x{self.id:02X}, {self.type.name} {self.payload})"
+        return f"Packet(id=0x{self.to_id:02X}, {self.type.name} {self.payload})"
