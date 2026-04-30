@@ -6,6 +6,7 @@ class MPU6050;
 
 namespace ctrl {
     class SystemCtrl;
+    class LEDCtrl;
 
     class ImuApp : public PktHandler {
     public:
@@ -14,6 +15,7 @@ namespace ctrl {
         bool trySetupImu(int imu_sda, int imu_scl, int imu_addr);
         void setup(SystemCtrl*);
         void iterate(uint32_t now);
+        LEDCtrl* getLEDs();
 
         virtual bool handlePacket(const comms::PktHeader&, const uint8_t* payload, uint8_t plen, MsgDest from) override;
 

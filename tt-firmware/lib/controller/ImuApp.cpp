@@ -15,6 +15,8 @@ void ImuApp::setup(SystemCtrl* sys) {
     }
 }
 
+LEDCtrl* ImuApp::getLEDs() { return sys_->getLedCtrl(); }
+
 bool ImuApp::trySetupImu(int imu_sda, int imu_scl, int imu_addr) {
     Serial.printf("[IMU] Testing MPU6050 on I2C (SDA: %d, SCL: %d, ADDR: 0x%02X)\n", imu_sda, imu_scl, imu_addr);
     Wire.begin(imu_sda, imu_scl);
@@ -97,6 +99,9 @@ void ImuApp::iterate(uint32_t now) {
 bool ImuApp::handlePacket(const comms::PktHeader& h, const uint8_t* payload, uint8_t plen, MsgDest from) {
     if (h.type == comms::CMD_ZERO) { //zero gyros
         imu_->calcOffsets();
+        return true;
+    } else if (h.type == comms::CMD_PING) {
+        getLEDs()->showAlert(0x555555, 300, 600);
         return true;
     } else {
         return false;
