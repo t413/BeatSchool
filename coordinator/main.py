@@ -1,8 +1,8 @@
 from __future__ import annotations
 import os, time, logging, json, argparse, typing, flask
-import packet as pkt
+import comms.packet as pkt
+from comms.serial_reader import SerialReader
 from node_registry import NodeRegistry
-from serial_reader import SerialReader
 from media_player import MediaPlayer
 
 logging.basicConfig(
@@ -180,7 +180,7 @@ def main():
     if reader or (os.environ.get("WERKZEUG_RUN_MAIN") != "true"):
         log.info("Reloader parent process detected, skipping serial init...")
     elif args.port:
-        reader = SerialReader(args.port, args.baud, registry)
+        reader = SerialReader(args.port, args.baud, registry.update)
         reader.start()
     else: log.warning("--no-serial: running without serial port (UI development mode)")
 

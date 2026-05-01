@@ -1,22 +1,19 @@
 # serial_reader.py
 # Runs a background thread that reads from the USB serial bridge,
-# parses packets, and updates the NodeRegistry.
-#
-# Framing strategy: scan for magic byte 0xAC, then read expected length
-# based on the cmd byte. Discard bytes that don't match.
+# reads packets, calls the callback. Also prints extranious data (like ascii log lines)
 
 from __future__ import annotations
 import serial, threading, logging, time
-import packet as pkt
-from node_registry import NodeRegistry
+from typing import Callable
+from .packet import Packet, STARTBYTE, PKT_OVERHEAD
 
 log = logging.getLogger(__name__)
 
 class SerialReader:
-    def __init__(self, port: str, baud: int, registry: NodeRegistry):
+    def __init__(self, port: str, baud: int, callback: Callable[[Packet], None]):
         self._port     = port
         self._baud     = baud
-        self._registry = registry
+        self._callback = callback
         self._ser: serial.Serial | None = None
         self._thread   = threading.Thread(target=self._run, daemon=True)
         self._running  = False
@@ -30,9 +27,9 @@ class SerialReader:
     def stop(self):
         self._running = False
 
-    def send(self, data: bytes | pkt.Packet):
+    def send(self, data: bytes | Packet):
         wassent = data
-        if isinstance(data, pkt.Packet):
+        if isinstance(data, Packet):
             data = data.to_bytes()
         """Thread-safe write to serial port."""
         if self._ser and self._ser.is_open:
@@ -42,9 +39,6 @@ class SerialReader:
             log.warning("send() called but serial port not open")
         return wassent
 
-    # ------------------------------------------------------------------
-    # Internal
-    # ------------------------------------------------------------------
     def _connect(self):
         while self._running:
             try:
@@ -85,11 +79,11 @@ class SerialReader:
         """
         while len(buf) > 0:
             # 1. If we find a start byte at the beginning, try to parse a packet
-            if buf[0] == pkt.STARTBYTE:
-                if len(buf) < pkt.PKT_OVERHEAD:
+            if buf[0] == STARTBYTE:
+                if len(buf) < PKT_OVERHEAD:
                     break  # Wait for more data
                 try:
-                    if (decoded := pkt.Packet.from_bytes(buf)) is not None:
+                    if (decoded := Packet.from_bytes(buf)) is not None:
                         self.handle_pkt(decoded)
                         buf = buf[decoded.read_from_buf : ] #remove from incoming buffer
                         continue
@@ -102,7 +96,7 @@ class SerialReader:
             # We treat everything until that point as extraneous text.
             idx = 1
             while idx < len(buf):
-                if buf[idx] == pkt.STARTBYTE or buf[idx] == ord('\n') or idx > 256:
+                if buf[idx] == STARTBYTE or buf[idx] == ord('\n') or idx > 256:
                     break
                 idx += 1
             skipped = buf[:idx]
@@ -110,5 +104,5 @@ class SerialReader:
             self._log_extraneous(skipped)
         return buf
 
-    def handle_pkt(self, pkt: pkt.Packet):
-        self._registry.update(pkt)
+    def handle_pkt(self, pkt: Packet):
+        self._callback(pkt)
