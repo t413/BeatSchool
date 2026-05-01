@@ -56,15 +56,16 @@ def check_serial():
 def api_nodes():
     return flask.jsonify(registry.all_nodes())
 
-def _broadcast_cmd(cmd: pkt.Cmd):
+def _broadcast_cmd(cmd: pkt.Cmd, pyld: bytes | None = None):
     check_serial()
     assert reader
-    wassent = reader.send(pkt.Packet(type=cmd))
+    payload = pkt.UnknownPayload(cmd=0, data=pyld) if pyld else None
+    wassent = reader.send(pkt.Packet(type=cmd, payload=payload))
     return flask.jsonify({"ok": True, "sent": str(wassent)})
 
 @api.route("/ping", methods=["POST"])
 def api_ping():
-    return _broadcast_cmd(pkt.Cmd.Ping)
+    return _broadcast_cmd(pkt.Cmd.Ping, b'\x01')
 
 @api.route("/zero", methods=["POST"])
 def api_zero():
