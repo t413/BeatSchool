@@ -102,7 +102,8 @@ bool ImuApp::handlePacket(const comms::PktHeader& h, const uint8_t* payload, uin
         getLEDs()->showAlert(0x001144, 300, 600);
         return true;
     } else if (h.type == comms::CMD_PING) {
-        getLEDs()->showAlert(0x555555, 300, 300);
+        if (plen == 1 && *payload == 0x01) //visual ping
+            getLEDs()->showAlert(0x555555, 300, 300);
         return true;
     } else {
         return false;
