@@ -22,8 +22,10 @@ namespace ctrl {
 
         virtual bool handlePacket(const comms::PktHeader&, const uint8_t* payload, uint8_t plen, MsgDest from) override;
         virtual void sendMsg(uint16_t to_id, uint8_t type, const uint8_t* payload, uint8_t plen, MsgDest dest);
+        virtual void sendTxt(uint16_t to_id, MsgDest dest, uint8_t type, const char* fmt, ...);
         virtual LEDCtrl* getLedCtrl() { return ledCtrl_; }
         virtual uint16_t getAddress() const { return address_; }
+        LEDCtrl* getLEDs() { return ledCtrl_; }
 
     protected:
         const char* version_ = nullptr;

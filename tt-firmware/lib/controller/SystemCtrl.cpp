@@ -88,7 +88,7 @@ namespace ctrl {
             sendMsg(h.from, comms::CMD_VERSION, (const uint8_t*)version_, strlen(version_), src);
         } else if (isLikelyForUs && h.type == comms::CMD_SET_STATE && plen == sizeof(comms::SetStatePayload)) {
             auto pkt = reinterpret_cast<const comms::SetStatePayload*>(payload);
-            Serial.printf("[CMD] SetState for node 0x%02X: mode %d, color %08X <%d %d>\n", pkt->led_mode, pkt->color, pkt->param1, pkt->param2);
+            Serial.printf("[CMD] SetState for node mode %d, color %08X <%d %d>\n", pkt->led_mode, pkt->color, pkt->param1, pkt->param2);
             if (ledCtrl_) {
                 ledCtrl_->handleCmd(*pkt);
             }
@@ -112,6 +112,16 @@ namespace ctrl {
         if (to8 & (uint8_t)MsgDest::EspNow) {
             esp_now_send(espDestAddr_.data(), buf, plen + comms::PKT_OVERHEAD);
         }
+    }
+
+    void SystemCtrl::sendTxt(uint16_t to_id, MsgDest dest, uint8_t type, const char* fmt, ...) {
+        char buf[128] = {0};
+        va_list args;
+        va_start(args, fmt);
+        vsnprintf(buf, sizeof(buf), fmt, args);
+        va_end(args);
+        sendMsg(to_id, type, (const uint8_t*)buf, strlen(buf), dest);
+        Serial.write(buf, strlen(buf));
     }
 
     void SystemCtrl::iterateSerial(uint32_t now) {

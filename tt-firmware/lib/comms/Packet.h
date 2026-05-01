@@ -61,6 +61,8 @@ enum Cmd : uint8_t {
     CMD_PING      = 0x00,   // coord -> broadcast (or relay alive ping)
     ERROR         = 0x01,
     CMD_VERSION   = 0x02,   // get or reply with program version
+    DEBUG_MSG     = 0x03,   // debug string message
+
 
     CMD_IMU_DATA  = 0xA1,   // node  -> coordinator
     CMD_SET_STATE = 0xA2,   // coord -> node
