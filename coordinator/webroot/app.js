@@ -137,7 +137,7 @@ async function restartSong() {
 
 async function fetchSnapshot() {
   try {
-    const r = await fetch("/api/nodes");
+    const r = await fetch("/api/state");
     const j = await r.json();
     renderState(j);
   } catch (e) {

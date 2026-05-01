@@ -1,19 +1,5 @@
-# main.py
-# Flask coordinator backend.
-# Run with:  python main.py --port /dev/tty.usbserial-XXXX
-#
-# Routes:
-#   GET  /               → serves webroot/index.html
-#   GET  /api/nodes      → JSON snapshot of all node states
-#   GET  /api/nodes/<id> → JSON snapshot of one node (id as hex string e.g. 0xa4)
-#   GET  /api/events     → SSE stream, emits updated node state on each change
-#   POST /api/ping       → broadcast CMD_PING
-#   POST /api/set_state  → send CMD_SET_STATE  body: {node_id, led_mode, r, g, b}
-
 from __future__ import annotations
-
 import os, time, logging, json, argparse, typing, flask
-
 import packet as pkt
 from node_registry import NodeRegistry
 from serial_reader import SerialReader
@@ -54,9 +40,9 @@ def check_serial():
     if not reader:
         return flask.jsonify({"error": "serial not connected"}), 503
 
-@api.route("/nodes", methods=["GET"])
+@api.route("/state", methods=["GET"])
 def api_nodes():
-    return flask.jsonify(registry.all_nodes())
+    return flask.jsonify(registry.current_state())
 
 def _broadcast_cmd(cmd: pkt.Cmd, pyld: bytes | None = None):
     check_serial()
@@ -153,7 +139,7 @@ def api_events():
                             q.get_nowait()
                         except queue.Empty:
                             break
-                    snapshot = json.dumps(registry.all_nodes())
+                    snapshot = json.dumps(registry.current_state())
                     yield f"event: node_update\ndata: {snapshot}\n\n"
                     last_heartbeat = time.time()
 

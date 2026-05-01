@@ -2,18 +2,19 @@
 # Handles song loading, beat analysis, and playback control.
 
 from __future__ import annotations
-import pygame, librosa, threading, time, logging
+import logging, threading, pathlib
+import librosa, vlc
 
 log = logging.getLogger(__name__)
 
 class MediaPlayer:
     def __init__(self, song_path: str | None):
         self.song_path = song_path
-        self.beats = []  # list of beat times in seconds
+        self.beats: list[float] = []
         self.duration = 0.0
+        self.player: vlc.MediaPlayer | None = None
+        self._vlc_instance = vlc.Instance('--no-video')
         self.is_playing = False
-        self.start_time = 0.0
-        self.paused_time = 0.0
         self._lock = threading.Lock()
 
         if song_path:
@@ -22,59 +23,73 @@ class MediaPlayer:
     def _load_song(self):
         if not self.song_path:
             return
+        path = pathlib.Path(self.song_path)
+        if not path.exists():
+            log.error(f"Song file does not exist: {self.song_path}")
+            self.song_path = None
+            return
+        try:
+            media = self._vlc_instance.media_new_path(str(path))
+            player = self._vlc_instance.media_player_new()
+            player.set_media(media)
+            self.player = player
+        except Exception as exc:
+            log.error(f"Failed to load song {self.song_path}: {exc}")
+            self.song_path = None
+            self.player = None
+
+    def analyze_song(self):
+        if not self.song_path:
+            return
+        path = pathlib.Path(self.song_path)
         try:
             # Load audio for analysis
-            y, sr = librosa.load(self.song_path)
+            y, sr = librosa.load(str(path), sr=None)
             self.duration = librosa.get_duration(y=y, sr=sr)
 
             # Detect beats
-            tempo, beat_positions = librosa.beat.beat_track(y=y, sr=sr)
+            _, beat_positions = librosa.beat.beat_track(y=y, sr=sr)
             self.beats = librosa.frames_to_time(beat_positions, sr=sr).tolist()
             log.info(f"Loaded song: {self.song_path}, duration: {self.duration:.2f}s, beats: {len(self.beats)}")
-
-            # Init pygame mixer
-            pygame.mixer.init()
-            pygame.mixer.music.load(self.song_path)
         except Exception as e:
             log.error(f"Failed to load song {self.song_path}: {e}")
-            self.song_path = None
+            self.beats = []
+            self.duration = 0.0
 
-    def play(self):
+    def play(self) -> bool:
         with self._lock:
-            if not self.song_path:
+            if self.player is None:
                 return False
-            if self.is_playing:
+            if self.player.is_playing():
+                self.is_playing = True
                 return True
-            pygame.mixer.music.play()
-            self.is_playing = True
-            self.start_time = time.time() - self.paused_time
-            self.paused_time = 0.0
+            result = self.player.play()
+            self.is_playing = (result == 0)
+            return self.is_playing
+
+    def pause(self) -> bool:
+        with self._lock:
+            if self.player is None or not self.player.is_playing():
+                return False
+            self.player.pause()
+            self.is_playing = False
             return True
 
-    def pause(self):
+    def restart(self) -> bool:
         with self._lock:
-            if not self.is_playing:
+            if self.player is None:
                 return False
-            pygame.mixer.music.pause()
+            self.player.stop()
+            self.player.set_time(0)
             self.is_playing = False
-            self.paused_time = time.time() - self.start_time
-            return True
-
-    def restart(self):
-        with self._lock:
-            if not self.song_path:
-                return False
-            pygame.mixer.music.stop()
-            self.is_playing = False
-            self.paused_time = 0.0
-            self.start_time = 0.0
             return self.play()
 
-    def get_current_time(self):
+    def get_current_time(self) -> float:
         with self._lock:
-            if not self.is_playing:
-                return self.paused_time
-            return time.time() - self.start_time
+            if self.player is None:
+                return 0.0
+            current_ms = self.player.get_time()
+            return float(current_ms / 1000.0) if current_ms >= 0 else 0.0
 
     def is_near_beat(self, current_time: float, tolerance: float = 0.1) -> bool:
         for beat in self.beats:

@@ -2,8 +2,7 @@
 # Holds the last-known state for every node seen on the network.
 # Thread-safe: serial_reader writes from its thread; Flask reads from the main thread.
 
-import time
-import threading
+import time, threading
 from dataclasses import dataclass, field, asdict
 from typing import Dict, Optional
 
@@ -15,10 +14,11 @@ class NodeState:
     pyld: ImuPayload
     last_seen: float = field(default_factory=time.time)
     packet_count: int = 0
-    # Future: scoring fields go here
     _last_print_count: int = 0
-    # beat_score: float = 0.0
-    # streak: int = 0
+    last_pitch: float = 0.0
+    last_roll: float = 0.0
+    beat_score: float = 0.0
+    streak: int = 0
 
 
 class NodeRegistry:
@@ -31,6 +31,7 @@ class NodeRegistry:
         self._subscribers: list = []
         self._sub_lock = threading.Lock()
         self._last_print_time = time.time()
+        self.media_player = None
 
     def _print_status(self):
         now = time.time()
@@ -70,16 +71,40 @@ class NodeRegistry:
             node.last_seen = time.time()
             node.packet_count += 1
 
+            # Scoring
+            if self.media_player and self.media_player.is_playing:
+                current_time = self.media_player.get_current_time()
+                if self.media_player.is_near_beat(current_time):
+                    dpitch = abs(pyld.pitch - node.last_pitch)
+                    droll = abs(pyld.roll - node.last_roll)
+                    if dpitch + droll > 1.0:  # threshold for movement
+                        node.beat_score += 1
+                        node.streak += 1
+                    else:
+                        node.streak = 0
+            node.last_pitch = pyld.pitch
+            node.last_roll = pyld.roll
+
         self._print_status()
         self._notify_subscribers(pkt.from_id)
 
     # ------------------------------------------------------------------
     # Read path (called from Flask threads)
     # ------------------------------------------------------------------
-    def all_nodes(self) -> dict:
+    def current_state(self) -> dict:
         now = time.time()
         with self._lock:
             result = {}
+            if self.media_player:
+                t = self.media_player.get_current_time()
+                nextbeats = [b for b in self.media_player.beats if b > t]
+                result['media'] = {
+                    'playing': self.media_player.is_playing,
+                    'next_beat': nextbeats[0] if nextbeats else None,
+                    'track': self.media_player.song_path,
+                    'duration': self.media_player.duration,
+                    'current_time': t,
+                }
             for nid, state in self._nodes.items():
                 d = asdict(state)
                 d["online"] = (now - state.last_seen) < self.STALE_TIMEOUT_S
