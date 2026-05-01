@@ -105,6 +105,36 @@ async function sendMode(modeHex) {
   }
 }
 
+async function playSong() {
+  try {
+    const r = await fetch("/api/play", { method: "POST" });
+    const j = await r.json();
+    console.log("play:", j);
+  } catch (e) {
+    console.error("play failed:", e);
+  }
+}
+
+async function pauseSong() {
+  try {
+    const r = await fetch("/api/pause", { method: "POST" });
+    const j = await r.json();
+    console.log("pause:", j);
+  } catch (e) {
+    console.error("pause failed:", e);
+  }
+}
+
+async function restartSong() {
+  try {
+    const r = await fetch("/api/restart", { method: "POST" });
+    const j = await r.json();
+    console.log("restart:", j);
+  } catch (e) {
+    console.error("restart failed:", e);
+  }
+}
+
 async function fetchSnapshot() {
   try {
     const r = await fetch("/api/nodes");

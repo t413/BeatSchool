@@ -17,6 +17,7 @@ import os, time, logging, json, argparse, typing, flask
 import packet as pkt
 from node_registry import NodeRegistry
 from serial_reader import SerialReader
+from media_player import MediaPlayer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +34,7 @@ app = flask.Flask(__name__, static_folder=WEBROOT, static_url_path="")
 api = flask.Blueprint('api', __name__, url_prefix='/api')
 
 registry = NodeRegistry()
+media_player: MediaPlayer | None = None   # initialised in main()
 reader: SerialReader | None = None   # initialised in main()
 
 
@@ -98,6 +100,30 @@ def api_set_state():
     reader.send(packet.to_bytes())
     return flask.jsonify({"ok": True, "sent": str(packet)})
 
+@api.route("/play", methods=["POST"])
+def api_play():
+    if not media_player:
+        return flask.jsonify({"error": "No song loaded"}), 400
+    if media_player.play():
+        return flask.jsonify({"ok": True})
+    return flask.jsonify({"error": "Failed to play"}), 500
+
+@api.route("/pause", methods=["POST"])
+def api_pause():
+    if not media_player:
+        return flask.jsonify({"error": "No song loaded"}), 400
+    if media_player.pause():
+        return flask.jsonify({"ok": True})
+    return flask.jsonify({"error": "Failed to pause"}), 500
+
+@api.route("/restart", methods=["POST"])
+def api_restart():
+    if not media_player:
+        return flask.jsonify({"error": "No song loaded"}), 400
+    if media_player.restart():
+        return flask.jsonify({"ok": True})
+    return flask.jsonify({"error": "Failed to restart"}), 500
+
 # ---------------------------------------------------------------------------
 # SSE stream
 # ---------------------------------------------------------------------------
@@ -162,6 +188,7 @@ def main():
     parser.add_argument("--baud",  type=int, default=115200)
     parser.add_argument("--host",  default="0.0.0.0")
     parser.add_argument("--http-port", type=int, default=5000)
+    parser.add_argument("--song",  help="Path to song file for beat analysis and playback")
     args = parser.parse_args()
 
     if reader or (os.environ.get("WERKZEUG_RUN_MAIN") != "true"):
@@ -170,6 +197,10 @@ def main():
         reader = SerialReader(args.port, args.baud, registry)
         reader.start()
     else: log.warning("--no-serial: running without serial port (UI development mode)")
+
+    global media_player
+    media_player = MediaPlayer(args.song)
+    registry.media_player = media_player
 
     log.info(f"Starting Flask on {args.host}:{args.http_port}")
     app.register_blueprint(api)
