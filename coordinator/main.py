@@ -2,8 +2,8 @@ from __future__ import annotations
 import os, time, logging, json, argparse, typing, flask
 import comms.packet as pkt
 from comms.serial_reader import SerialReader
-from node_registry import NodeRegistry
-from media_player import MediaPlayer
+from core.node_registry import NodeRegistry
+from core.media_player import MediaPlayer
 
 logging.basicConfig(
     level=logging.INFO,

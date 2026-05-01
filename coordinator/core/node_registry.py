@@ -1,12 +1,7 @@
-# node_registry.py
-# Holds the last-known state for every node seen on the network.
-# Thread-safe: serial_reader writes from its thread; Flask reads from the main thread.
-
-import time, threading
+import time, threading, typing
 from dataclasses import dataclass, field, asdict
-from typing import Dict, Optional
-
-from packet import Packet, ImuPayload
+from comms.packet import Packet, ImuPayload
+from .media_player import MediaPlayer
 
 
 @dataclass
@@ -25,13 +20,13 @@ class NodeRegistry:
     STALE_TIMEOUT_S = 5.0   # seconds before a node is considered offline
 
     def __init__(self):
-        self._nodes: Dict[int, NodeState] = {}
+        self._nodes: typing.Dict[int, NodeState] = {}
         self._lock = threading.Lock()
         # Subscribers for SSE: list of queue.Queue
         self._subscribers: list = []
         self._sub_lock = threading.Lock()
         self._last_print_time = time.time()
-        self.media_player = None
+        self.media_player: typing.Optional[MediaPlayer] = None
 
     def _print_status(self):
         now = time.time()
@@ -111,7 +106,7 @@ class NodeRegistry:
                 result[hex(nid)] = d
             return result
 
-    def get_node(self, node_id: int) -> Optional[dict]:
+    def get_node(self, node_id: int) -> typing.Optional[dict]:
         now = time.time()
         with self._lock:
             node = self._nodes.get(node_id)
