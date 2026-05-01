@@ -63,6 +63,8 @@ enum Cmd : uint8_t {
     CMD_VERSION   = 0x02,   // get or reply with program version
     DEBUG_MSG     = 0x03,   // debug string message
 
+    CMD_UPDATE_INIT    = 0x11,   // start OTA update, sends metadata
+    CMD_UPDATE_PAYLOAD = 0x12,   // OTA update data chunk
 
     CMD_IMU_DATA  = 0xA1,   // node  -> coordinator
     CMD_SET_STATE = 0xA2,   // coord -> node
@@ -84,6 +86,22 @@ struct __attribute__((__packed__)) SetStatePayload {
     uint32_t param2;
 };
 static constexpr uint8_t SetStatePayloadSize = sizeof(SetStatePayload);
+
+// ---- OTA Update payload structures ---------------------------
+struct __attribute__((__packed__)) UpdateInitPayload {
+    uint16_t total_chunks;         // Total number of data chunks to follow
+    uint16_t full_update_chksum;   // CRC/checksum of entire update image
+    uint32_t total_size;           // Total size of update in bytes
+};
+static constexpr uint8_t UpdateInitPayloadSize = sizeof(UpdateInitPayload);
+
+struct __attribute__((__packed__)) UpdatePayloadHeader {
+    uint16_t sequence;             // Chunk sequence number
+    uint16_t full_update_chksum;   // CRC/checksum of entire update image
+};
+static constexpr uint8_t UpdatePayloadHeaderSize = sizeof(UpdatePayloadHeader);
+static constexpr uint8_t UPDATE_CHUNK_MAX = PAYLOAD_MAX - UpdatePayloadHeaderSize;
+
 #pragma pack(pop)
 
 } // namespace comms

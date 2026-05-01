@@ -1,5 +1,6 @@
 #pragma once
 #include <PktHandler.h>
+#include <Packet.h>
 #include <array>
 
 class CRGB;
@@ -28,6 +29,10 @@ namespace ctrl {
         LEDCtrl* getLEDs() { return ledCtrl_; }
 
     protected:
+        virtual bool handleUpdateInit(const comms::PktHeader& h, const comms::UpdateInitPayload& payload, MsgDest from);
+        virtual bool handleUpdatePayload(const comms::PktHeader& h, const uint8_t* payload, uint8_t plen, MsgDest from);
+
+    protected:
         const char* version_ = nullptr;
         uint16_t address_ = 0;
         PktHandler* extraHandler_ = nullptr;
@@ -38,6 +43,9 @@ namespace ctrl {
         uint32_t lastHandledCmd_ = 0;
         uint32_t idlePingLastSent_ = 2000;
         uint32_t idlePingPeriod_ = 20000;
+
+        comms::UpdateInitPayload updateInited_ = {0};
+        uint16_t updateLastSeq_ = 0;
 
         static constexpr std::array<uint8_t, 6> BROADCAST_ADDR{ 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
         std::array<uint8_t, 6> espDestAddr_ = BROADCAST_ADDR;

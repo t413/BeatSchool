@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #ifdef ARDUINO_ARCH_ESP8266
 #include <ESP8266WiFi.h>
+#include <Updater.h>
 #else
 #include <WiFi.h>
 #endif
@@ -92,6 +93,11 @@ namespace ctrl {
             if (ledCtrl_) {
                 ledCtrl_->handleCmd(*pkt);
             }
+        } else if (isLikelyForUs && h.type == comms::CMD_UPDATE_INIT && plen == sizeof(comms::UpdateInitPayload)) {
+            auto pkt = reinterpret_cast<const comms::UpdateInitPayload*>(payload);
+            handled = handleUpdateInit(h, *pkt, src);
+        } else if (isLikelyForUs && h.type == comms::CMD_UPDATE_PAYLOAD && plen >= sizeof(comms::UpdatePayloadHeader)) {
+            handled = handleUpdatePayload(h, payload, plen, src);
         // TODO handle other system cmds like settings get/set, updates, etc
         } else { //unhandled
             Serial.printf("[CMD] Unhandled pkt: id 0x%02X type %d plen %d src %d\n", h.to, h.type, plen, (int)src);
@@ -159,6 +165,71 @@ namespace ctrl {
             }
         }
         return false;
+    }
+
+    bool SystemCtrl::handleUpdateInit(const comms::PktHeader& h, const comms::UpdateInitPayload& init, MsgDest from) {
+        // Base implementation just acknowledges. Override to handle actual update logic.
+        Serial.printf("[OTA] Update init received: %u chunks, total size %u bytes\n", init.total_chunks, init.total_size);
+
+        #ifdef ARDUINO_ARCH_ESP8266
+        if (!Update.begin(updateInited_.total_size)) {
+            Serial.printf("[OTA] Update.begin failed: %d\n", Update.getError());
+            sendTxt(h.from, from, comms::ERROR, "Update.begin failed %d", Update.getError());
+        } else {
+            updateInited_ = init; // save update context
+            Serial.println("[OTA] Update begun");
+            sendMsg(0, comms::CMD_UPDATE_INIT, nullptr, 0, from); //ack
+        }
+        #else
+            Serial.println("[OTA] ESP8266 OTA only");
+            sendTxt(h.from, from, comms::ERROR, "Update not supported");
+        #endif
+        return true;
+    }
+
+    bool SystemCtrl::handleUpdatePayload(const comms::PktHeader& h, const uint8_t* payload, uint8_t plen, MsgDest from) {
+        auto hdr = reinterpret_cast<const comms::UpdatePayloadHeader*>(payload);
+        const uint8_t chunkDataLen = plen - comms::UpdatePayloadHeaderSize;
+        const uint8_t* chunkData = payload + comms::UpdatePayloadHeaderSize;
+        Serial.printf("[OTA] Payload seq=%u, chunkLen=%u\n", hdr->sequence, chunkDataLen);
+
+        #ifdef ARDUINO_ARCH_ESP8266
+        if (!Update.isRunning()) {
+            sendTxt(h.from, from, comms::ERROR, "Update not started");
+            return true;
+        } else if (hdr->sequence != updateLastSeq_ + 1) {
+            sendTxt(h.from, from, comms::ERROR, "Update bad seq %d", updateLastSeq_);
+            return true;
+        }
+
+        const size_t written = Update.write((uint8_t*)chunkData, chunkDataLen);
+
+        if (written != chunkDataLen || Update.hasError()) {
+            sendTxt(h.from, from, comms::ERROR, "[OTA] Write fail %u / %u\n", (unsigned)written, (unsigned)chunkDataLen);
+            return true;
+        }
+        bool hasError = Update.hasError();
+
+        if (hdr->sequence >= updateInited_.total_chunks) { //finished!
+            if (!Update.end()) {
+                hasError = true; //fall through to send error
+            } else {
+                Serial.println("[OTA] Update complete, rebooting...");
+                delay(100);
+                ESP.restart();
+            }
+        }
+
+        if (hasError) {
+            sendTxt(h.from, from, comms::ERROR, "[OTA] err %s", Update.getErrorString().c_str());
+        } else {
+            sendMsg(h.from, comms::CMD_UPDATE_PAYLOAD, payload, sizeof(comms::UpdatePayloadHeader), from); //ack
+        }
+        return true;
+        #else
+        Serial.println("[OTA] ESP8266 OTA only");
+        return false;
+        #endif
     }
 
 } // namespace ctrl
