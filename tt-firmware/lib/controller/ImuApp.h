@@ -1,3 +1,4 @@
+#pragma once
 #include <PktHandler.h>
 #include <Packet.h>
 #include <Arduino.h>

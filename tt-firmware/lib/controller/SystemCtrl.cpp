@@ -14,7 +14,7 @@
 
 namespace ctrl {
 
-    SystemCtrl::SystemCtrl(const char* version) { }
+    SystemCtrl::SystemCtrl(const char* version) : version_(version) { }
 
     void SystemCtrl::setupLeds(CRGB* leds, uint8_t numLeds) {
         ledCtrl_ = new LEDCtrl(leds, numLeds);
@@ -72,7 +72,7 @@ namespace ctrl {
     bool SystemCtrl::handlePacket(const comms::PktHeader& h, const uint8_t* payload, uint8_t plen, MsgDest src) {
         if (isForwardingNode() && h.to != address_) {  //not specifically for us? forward to other interface
             auto dest = (src == MsgDest::Uart) ? MsgDest::EspNow : MsgDest::Uart;
-            sendMsg(h.to, h.type, payload, plen, dest);
+            sendMsg(h.to, h.type, payload, plen, dest, h.from); //forward and include the from address
             return true;
         }
 
@@ -107,9 +107,9 @@ namespace ctrl {
         return true;
     }
 
-    void SystemCtrl::sendMsg(uint16_t to_id, uint8_t type, const uint8_t* payload, uint8_t plen, MsgDest to_dest) {
+    void SystemCtrl::sendMsg(uint16_t to_id, uint8_t type, const uint8_t* payload, uint8_t plen, MsgDest to_dest, uint16_t fromaddr) {
         uint8_t buf[comms::FRAME_MAX] = {0};
-        comms::pktSerialize(address_, to_id, type, payload, plen, buf, sizeof(buf));
+        comms::pktSerialize(fromaddr? fromaddr : address_, to_id, type, payload, plen, buf, sizeof(buf));
 
         uint8_t to8 = static_cast<uint8_t>(to_dest);
         if (to8 & (uint8_t)MsgDest::Uart) {
@@ -134,7 +134,9 @@ namespace ctrl {
         if (readBinaryProtocolToBuffer(&Serial, serBuf_, serPos_, sizeof(serBuf_))) {
             const comms::PktHeader* h = reinterpret_cast<const comms::PktHeader*>(serBuf_);
             const uint8_t* payload = serBuf_ + comms::PAYLOAD_OFFSET;
-            handlePacket(*h, payload, h->plen, MsgDest::Uart);
+            if (handlePacket(*h, payload, h->plen, MsgDest::Uart)) {
+                lastHandledCmd_ = now;
+            }
             serPos_ = 0;
         }
     }

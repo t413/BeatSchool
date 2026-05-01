@@ -1,19 +1,4 @@
 #pragma once
-// ============================================================
-//  Packet.h  —  TTeacher wire protocol
-//  No Arduino dependencies. Safe for native unit tests.
-//
-//  Frame layout:
-//    [startbyte : 1]  0xAC (STARTBYTE)
-//    [id        : 1]  Node ID or Version
-//    [type      : 1]  Command Type (Cmd)
-//    [plen      : 1]  payload byte count (0..PAYLOAD_MAX)
-//    [payload   : N]
-//    [chksum    : 1]  XOR of all preceding bytes
-//
-//  Total overhead: 5 bytes. Max frame: 5 + PAYLOAD_MAX bytes.
-// ============================================================
-
 #include <cstdint>
 #include <cstring>
 #include <functional>
