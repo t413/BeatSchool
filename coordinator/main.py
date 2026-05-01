@@ -64,11 +64,15 @@ def _broadcast_cmd(cmd: pkt.Cmd):
 
 @api.route("/ping", methods=["POST"])
 def api_ping():
-    return _broadcast_cmd(pkt.Cmd.PING)
+    return _broadcast_cmd(pkt.Cmd.Ping)
 
 @api.route("/zero", methods=["POST"])
 def api_zero():
     return _broadcast_cmd(pkt.Cmd.ZERO)
+
+@api.route("/version", methods=["POST"])
+def api_version():
+    return _broadcast_cmd(pkt.Cmd.Version)
 
 @api.route("/set_state", methods=["POST"])
 def api_set_state():

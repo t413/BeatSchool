@@ -92,7 +92,6 @@ class SerialReader:
                     if (decoded := pkt.Packet.from_bytes(buf)) is not None:
                         self.handle_pkt(decoded)
                         buf = buf[decoded.read_from_buf : ] #remove from incoming buffer
-                        print(f"decoded len({decoded.read_from_buf}) (now {len(buf)} -> {decoded}")
                         continue
                     else: break #no pkt or exception? partial read
                 except ValueError as e:

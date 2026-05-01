@@ -71,6 +71,16 @@ async function sendPing() {
   }
 }
 
+async function sendVersion() {
+  try {
+    const r = await fetch("/api/version", { method: "POST" });
+    const j = await r.json();
+    console.log("ping:", j);
+  } catch (e) {
+    console.error("ping failed:", e);
+  }
+}
+
 async function sendMode(modeHex) {
   const nodeId = nodeIdInput.value.trim() || "0xFF";
   // led_mode 0x01 (solid) gets white; others don't need color

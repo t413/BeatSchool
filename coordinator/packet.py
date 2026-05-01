@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import struct, typing, enum
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 # --- Constants ---
 STARTBYTE = 0xAC
@@ -19,6 +19,9 @@ class Cmd(enum.IntEnum):
     Ping      = 0x00
     Error     = 0x01
     Version   = 0x02
+    DebugMsg  = 0x03
+    UpdateInit= 0x11
+    UpdateData= 0x12
     IMU_DATA  = 0xA1
     SET_STATE = 0xA2
     ZERO      = 0xA3
@@ -30,6 +33,58 @@ class LedMode(enum.IntEnum):
     Spotlight = 3
 
 # --- Payload Classes ---
+
+@dataclass
+class StrPayload:
+    value: str = ""
+    TYPE = Cmd.Version
+    @staticmethod
+    def from_bytes(data: bytes) -> 'StrPayload': return StrPayload(data.decode('ascii', errors='replace'))
+    def to_bytes(self) -> bytes: return self.value.encode('ascii')
+    def __str__(self) -> str: return self.value
+
+@dataclass
+class UpdateInit:
+    total_chunks: int
+    full_update_chksum: int
+    total_size: int
+
+    TYPE = Cmd.UpdateInit
+    PACK_FMT = '<HHQ'
+    SIZE = struct.calcsize(PACK_FMT)
+    @staticmethod
+    def from_bytes(data: bytes) -> 'UpdateInit':
+        t, f, s = struct.unpack(UpdateInit.PACK_FMT, data[:UpdateInit.SIZE])
+        return UpdateInit(t, f, s)
+    def to_bytes(self) -> bytes: return struct.pack(UpdateInit.PACK_FMT, self.total_chunks, self.full_update_chksum, self.total_size)
+    def __str__(self) -> str: return str(asdict(self))
+
+@dataclass
+class UpdateData:
+    sequence: int
+    full_update_chksum: int
+    data: bytes
+
+    TYPE = Cmd.UpdateData
+    PACK_FMT = '<HH'
+    SIZE = struct.calcsize(PACK_FMT)
+    @staticmethod
+    def from_bytes(data: bytes) -> 'UpdateData':
+        s, c = struct.unpack(UpdateInit.PACK_FMT, data[:UpdateData.SIZE])
+        return UpdateData(s, c, data[UpdateData.SIZE:])
+    def to_bytes(self) -> bytes: return struct.pack(self.PACK_FMT, self.sequence, self.full_update_chksum) + self.data
+    def __str__(self) -> str: return str(asdict(self))
+
+@dataclass
+class UnknownPayload:
+    """Unknown type: raw bytes"""
+    cmd: int
+    data: bytes
+    @property
+    def size(self) -> int: return len(self.data)
+    def to_bytes(self) -> bytes: return self.data
+    def __str__(self) -> str: return f"raw={self.data.hex()}"
+
 @dataclass
 class ImuPayload:
     """IMU data: seq(2) + pitch(4) + roll(4) = 14 bytes"""
@@ -45,7 +100,7 @@ class ImuPayload:
         return struct.pack(self.PACK_FMT, self.seq, self.pitch, self.roll)
     @staticmethod
     def from_bytes(data: bytes) -> 'ImuPayload':
-        return ImuPayload(*struct.unpack(ImuPayload.PACK_FMT, data[:14]))
+        return ImuPayload(*struct.unpack(ImuPayload.PACK_FMT, data[:ImuPayload.SIZE]))
     def __str__(self) -> str:
         return f"seq={self.seq}, pitch={self.pitch:+7.2f}, roll={self.roll:+7.2f}"
 
@@ -63,39 +118,19 @@ class SetStatePayload:
 
     def to_bytes(self) -> bytes:
         return struct.pack(self.PACK_FMT, self.led_mode.value, self.color, self.param1, self.param2)
-
     @staticmethod
     def from_bytes(data: bytes) -> 'SetStatePayload':
         led_mode, color, param1, param2 = struct.unpack(SetStatePayload.PACK_FMT, data[:15])
         return SetStatePayload(LedMode(led_mode), color, param1, param2)
-
-    def __str__(self) -> str:
-        return f"mode={self.led_mode.name}, color=0x{self.color:06X}"
-
-@dataclass
-class VersionPayload:
-    """Version: raw string payload"""
-    version: str = ""
-    TYPE = Cmd.VERSION
-    def to_bytes(self) -> bytes: return self.version.encode('ascii')
-    def __str__(self) -> str: return f"ver={self.version}"
-
-    @staticmethod
-    def from_bytes(data: bytes) -> 'VersionPayload': return VersionPayload(data.decode('ascii', errors='replace'))
-
-@dataclass
-class UnknownPayload:
-    """Unknown type: raw bytes"""
-    cmd: int
-    data: bytes
-    @property
-    def size(self) -> int: return len(self.data)
-    def to_bytes(self) -> bytes: return self.data
-    def __str__(self) -> str: return f"raw={self.data.hex()}"
+    def __str__(self) -> str: return str(asdict(self))
 
 # --- Payload Registry ---
 _PAYLOADS = {
-    Cmd.VERSION: VersionPayload,
+    Cmd.Version: StrPayload,
+    Cmd.Error:   StrPayload,
+    Cmd.DebugMsg:   StrPayload,
+    Cmd.UpdateInit: UpdateInit,
+    Cmd.UpdateData: UpdateData,
     Cmd.IMU_DATA: ImuPayload,
     Cmd.SET_STATE: SetStatePayload,
 }
@@ -106,8 +141,8 @@ class Packet:
     """Complete TTeacher protocol packet"""
     from_id: int = COORDINATOR_ID
     to_id: int = 0
-    type: Cmd = Cmd.PING
-    payload: None | typing.Union[ImuPayload, SetStatePayload, VersionPayload, UnknownPayload] = None
+    type: Cmd = Cmd.Ping
+    payload: None | typing.Union[ImuPayload, SetStatePayload, StrPayload, UnknownPayload] = None
     read_from_buf: int = 0
 
     def __post_init__(self):
@@ -161,11 +196,11 @@ class Packet:
     # --- Factory methods ---
     @classmethod
     def imu_data(cls, to_id: int, seq: int, pitch: float, roll: float) -> 'Packet':
-        return cls(to_id=to_id, type=Cmd.IMU_DATA, payload=ImuPayload(to_id, seq, pitch, roll))
+        return cls(to_id=to_id, type=Cmd.IMU_DATA, payload=ImuPayload(seq, pitch, roll))
 
     @classmethod
     def set_state(cls, to_id: int, led_mode: LedMode, color: int = 0, p1=0, p2=0) -> 'Packet':
-        return cls(to_id=to_id, type=Cmd.SET_STATE, payload=SetStatePayload(to_id, led_mode, color, p1, p2))
+        return cls(to_id=to_id, type=Cmd.SET_STATE, payload=SetStatePayload(led_mode, color, p1, p2))
 
     def __str__(self) -> str:
         return f"Packet(from=0x{self.from_id:04X}, to=0x{self.to_id:04X}, {self.type.name} {self.payload})"

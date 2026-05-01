@@ -106,8 +106,9 @@
 
   <div class="controls">
     <input  class="node-id-input" id="node-id-input" value="0xFF" title="Node ID (hex or dec, 0xFF = broadcast)">
-    <button onclick="sendZero()">Zero all</button>
     <button onclick="sendPing()">Ping broadcast</button>
+    <button onclick="sendVersion()">Req Vers</button>
+    <button onclick="sendZero()">Zero all</button>
     <button onclick="sendMode('0x00')">Mode: IMU</button>
     <button onclick="sendMode('0x01')">Mode: Solid white</button>
     <button onclick="sendMode('0x02')">Mode: Flash</button>
