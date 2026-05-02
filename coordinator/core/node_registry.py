@@ -1,7 +1,7 @@
 import time, threading, typing
 from dataclasses import dataclass, field, asdict
 from comms.packet import Packet, ImuPayload
-from .media_player import MediaPlayer
+import core.controller as ctrl
 
 
 @dataclass
@@ -26,7 +26,7 @@ class NodeRegistry:
         self._subscribers: list = []
         self._sub_lock = threading.Lock()
         self._last_print_time = time.time()
-        self.media_player: typing.Optional[MediaPlayer] = None
+        self.media_player = ctrl.media_player
 
     def _print_status(self):
         now = time.time()

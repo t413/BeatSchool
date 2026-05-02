@@ -11,8 +11,8 @@ import madmom.features.onsets as onsets
 log = logging.getLogger(__name__)
 
 class MediaPlayer:
-    def __init__(self, song_path: str | None):
-        self.song_path = song_path
+    def __init__(self):
+        self.song_path: str | None = None
         self.beats: list[float] = []
         self.duration = 0.0
         self.player: vlc.MediaPlayer | None = None
@@ -20,12 +20,8 @@ class MediaPlayer:
         self.is_playing = False
         self._lock = threading.Lock()
 
-        if song_path:
-            self._load_song()
-
-    def _load_song(self):
-        if not self.song_path:
-            return
+    def load_song(self, song_path: str):
+        self.song_path = song_path
         path = pathlib.Path(self.song_path)
         if not path.exists():
             log.error(f"Song file does not exist: {self.song_path}")

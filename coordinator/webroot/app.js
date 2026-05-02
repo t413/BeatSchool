@@ -107,7 +107,7 @@ async function sendMode(modeHex) {
 
 async function playSong() {
   try {
-    const r = await fetch("/api/play", { method: "POST" });
+    const r = await fetch("/media/play", { method: "POST" });
     const j = await r.json();
     console.log("play:", j);
   } catch (e) {
@@ -117,7 +117,7 @@ async function playSong() {
 
 async function pauseSong() {
   try {
-    const r = await fetch("/api/pause", { method: "POST" });
+    const r = await fetch("/media/pause", { method: "POST" });
     const j = await r.json();
     console.log("pause:", j);
   } catch (e) {
@@ -127,7 +127,7 @@ async function pauseSong() {
 
 async function restartSong() {
   try {
-    const r = await fetch("/api/restart", { method: "POST" });
+    const r = await fetch("/media/restart", { method: "POST" });
     const j = await r.json();
     console.log("restart:", j);
   } catch (e) {
