@@ -1,5 +1,5 @@
 from __future__ import annotations
-import os, logging, argparse, flask
+import os, logging, argparse, flask, datetime, glob
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +42,7 @@ def configure_all_module(module, app_arg, fn='configure', raises=True):
 
 def main():
     parser = argparse.ArgumentParser(description="RhythmClass coordinator")
+    parser.add_argument("--logdir", default="logs", help="directory for log files")
     parser.add_argument("--port",  help="Serial port of ESP-Now bridge")
     parser.add_argument("--baud",  type=int, default=115200)
     parser.add_argument("--host",  default="0.0.0.0")
@@ -59,6 +60,19 @@ def main():
             print("Requirements installed.")
 
     import core.controller as ctrl #only import our deps after pip install
+    ctrl.save_args(args)
+
+    if args.logdir and (lfile := ctrl.get_logfile_path("coordinator")):
+        if os.environ.get("WERKZEUG_RUN_MAIN") == "true": #werkzeug auto-reload
+            log_pattern = os.path.join(args.logdir, "*_coordinator.log") #find most recent
+            if (existing_logs := sorted(glob.glob(log_pattern))):
+                lfile = existing_logs[-1]
+                log.info(f"continuing with existing logfile on reload {lfile}")
+        file_handler = logging.FileHandler(lfile)
+        file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+        logging.getLogger().addHandler(file_handler)
+        logging.getLogger("werkzeug").setLevel(logging.INFO)
+        log.info(f"Logging to {lfile}")
 
     if ctrl.reader or (os.environ.get("WERKZEUG_RUN_MAIN") != "true"):
         log.info("Reloader parent process detected, skipping serial init...")
