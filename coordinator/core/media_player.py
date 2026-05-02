@@ -1,6 +1,8 @@
 from __future__ import annotations
 import logging, threading, pathlib, glob, random
-import vlc
+try: import vlc #CI can't import this
+except ImportError: vlc = None
+
 from core.media_track import MediaTrack
 
 log = logging.getLogger(__name__)
@@ -11,7 +13,11 @@ class MediaPlayer:
         self.tracks: list[MediaTrack] = []
         self.current_track: MediaTrack | None = None
         self.player: vlc.MediaPlayer | None = None
-        self._vlc_instance = vlc.Instance('--no-video')
+        try:
+            self._vlc_instance = vlc.Instance('--no-video') if vlc else None
+        except Exception as exc:
+            self._vlc_instance = None
+            log.error(f"Failed to initialize VLC: {exc}")
         self.is_playing = False
         self._lock = threading.Lock()
         self._playback_ended_handled = False  # track if we've already called end_session
@@ -51,7 +57,7 @@ class MediaPlayer:
         return True
 
     def _load_vlc(self):
-        if not self.current_track:
+        if not self.current_track or not vlc:
             return
         try:
             media = self._vlc_instance.media_new_path(self.current_track.path)

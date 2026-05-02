@@ -1,6 +1,6 @@
 #include "ImuApp.h"
 #include "SystemCtrl.h"
-#include "LedCtrl.h"
+#include "LEDCtrl.h"
 #include <MPU6050_light.h>
 #include <math.h>
 

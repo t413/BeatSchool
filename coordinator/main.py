@@ -41,7 +41,7 @@ def configure_all_module(module, app_arg, fn='configure', raises=True):
     print(f"{module.__name__}.{fn}() complete on {len(modules)} submodules.")
 
 def main():
-    parser = argparse.ArgumentParser(description="RhythmClass coordinator")
+    parser = argparse.ArgumentParser(description="BeatSchool coordinator")
     parser.add_argument("--logdir", default="logs", help="directory for log files")
     parser.add_argument("--port",  help="Serial port of ESP-Now bridge")
     parser.add_argument("--baud",  type=int, default=115200)

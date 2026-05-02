@@ -1,4 +1,4 @@
-// app.js — RhythmClass coordinator frontend
+// app.js — BeatSchool coordinator frontend
 
 const sseDot = document.getElementById('sse-dot');
 const sseLabel = document.getElementById('sse-label');
