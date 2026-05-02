@@ -1,8 +1,11 @@
-import time, threading, typing, queue
+import time, threading, typing, queue, logging
 from dataclasses import dataclass, field, asdict
 from comms.packet import Packet, ImuPayload
+from .scoring_session import ScoringSession
 
 PKTRATE_ALPHA = 0.995
+
+log = logging.getLogger(__name__)
 
 @dataclass
 class NodeState:
@@ -55,6 +58,29 @@ class NodeRegistry:
         self._last_print_time = time.time()
         import core.controller as ctrl #avoid import loop
         self.media_player = ctrl.media_player
+        self.scoring_session : typing.Optional[ScoringSession] = None
+
+    def start_session(self):
+        if not self.media_player.is_playing or not (t := self.media_player.current_track):
+            return
+        self.scoring_session = ScoringSession(t.beats, t.onsets)
+        log.info(f"Started new ScoringSession {self.scoring_session.session_id}")
+
+    def end_session(self):
+        if not self.scoring_session:
+            return
+        import core.controller as ctrl
+        fpath = ctrl.get_logfile_path("session_raw.pkl")
+        log.info(f"Saving raw session to {fpath}")
+        self.scoring_session.save(fpath)
+
+        self.scoring_session.score_all()
+        fullpath = ctrl.get_logfile_path("session_final.pkl")
+        log.info(f"Saving final session to {fullpath}")
+        self.scoring_session.save(fullpath)
+        self.scoring_session.log_summary()
+
+        # keep session around for frontend ui
 
     def _print_status(self):
         now = time.time()
@@ -85,7 +111,9 @@ class NodeRegistry:
                 self._nodes[pkt.from_id] = NodeState.new(pkt)
             else: node.update(pkt)
 
-            # Scoring
+        if (mp := self.media_player).is_playing and (sc := self.scoring_session):
+            sc.update(mp.get_current_time(), pkt.from_id, pkt.payload.pitch, pkt.payload.roll)
+
         self._print_status()
         self._notify_subscribers(pkt)
 

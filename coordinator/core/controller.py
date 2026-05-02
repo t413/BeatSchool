@@ -29,7 +29,7 @@ def get_logfile_path(topic: str) -> str:
     if launch_args.logdir and not os.path.exists(launch_args.logdir):
         os.makedirs(launch_args.logdir)
     now_str = datetime.datetime.now().strftime("%y%m%d-%H%M%S")
-    fname = f"{now_str}_{topic}.log"
+    fname = f"{now_str}_{topic}" if "." in topic else f"{now_str}_{topic}.log"
     return os.path.join(launch_args.logdir, fname) if launch_args.logdir else fname
 
 def get_current_logfile() -> str:

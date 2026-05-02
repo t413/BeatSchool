@@ -68,8 +68,12 @@ class MediaPlayer:
             if self.player.is_playing():
                 self.is_playing = True
                 return True
+            fresh_start = (self.player.get_time() <= 0)
             result = self.player.play()
             self.is_playing = (result == 0)
+            if fresh_start:
+                import core.controller as ctrl
+                ctrl.registry.start_session()
             return self.is_playing
 
     def pause(self) -> bool:
@@ -87,6 +91,8 @@ class MediaPlayer:
             self.player.stop()
             self.player.set_time(0)
             self.is_playing = False
+            import core.controller as ctrl
+            ctrl.registry.end_session()
             return True
 
     def get_current_time(self) -> float:
