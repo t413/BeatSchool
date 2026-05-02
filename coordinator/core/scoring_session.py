@@ -13,7 +13,6 @@ sample per player, and periodically computes ScoreSnapshots across several axes:
   beat_double  — double-time / 8th notes
   beat_triple  — triplet feel
   beat_quad    — 16th notes / quad time
-  sharpness    — 0 = flowing/smooth, 1 = sharp/staccato
   amplitude    — normalized RMS displacement (effort / expressiveness)
   consistency  — how stable the motion is within the window
   onset_lock   — how well peaks align to actual musical onsets (bonus axis)
@@ -104,11 +103,11 @@ class ScoreSnapshot:
     beat_double:  float = 0.0   # double-time (×2)
     beat_triple:  float = 0.0   # triplet     (×3)
     beat_quad:    float = 0.0   # 16th-note   (×4)
-    sharpness:    float = 0.0   # 0=fluid, 1=staccato
     amplitude:    float = 0.0   # normalized RMS displacement
     consistency:  float = 0.0   # amplitude regularity
     onset_lock:   float = 0.0   # alignment to musical onsets
     dominant:     str   = "—"   # best-fit subdivision label
+    #TODO ideas: sharpness vs smoothness (two scores), circle pattern matching
 
 
 # Subdivision name → events-per-beat multiplier
@@ -477,7 +476,7 @@ class ScoringSession:
         Useful for plotting a single score axis over time.
 
         axis: one of beat_half, beat_single, beat_double, beat_triple,
-              beat_quad, sharpness, amplitude, consistency, onset_lock
+              beat_quad, amplitude, consistency, onset_lock
         """
         buf = self.players.get(node_id)
         if not buf or not buf.score_history:
@@ -490,7 +489,7 @@ class ScoringSession:
         """Return all scored axes for a player as {axis: (times, scores)}."""
         axes = [
             "beat_half","beat_single","beat_double","beat_triple","beat_quad",
-            "sharpness","amplitude","consistency","onset_lock",
+            "amplitude","consistency","onset_lock",
         ]
         return {ax: self.score_timeline(node_id, ax) for ax in axes}
 
@@ -501,7 +500,7 @@ class ScoringSession:
         """
         axes = [
             "beat_half","beat_single","beat_double","beat_triple","beat_quad",
-            "sharpness","amplitude","consistency","onset_lock",
+            "amplitude","consistency","onset_lock",
         ]
         result: dict[int, dict[str, float]] = {}
         for nid, buf in self.players.items():
@@ -561,20 +560,6 @@ class ScoringSession:
         best_key   = max(beat_scores, key=beat_scores.get)
         best_score = beat_scores[best_key]
         snap.dominant = best_key if best_score >= 0.35 else "—"
-
-        # ── Sharpness ───────────────────────────────────────────────────────
-        #
-        # Sharpness = normalized jerk / motion_energy.
-        #
-        # High jerk relative to energy → quick, snappy, staccato movement.
-        # Low ratio                    → slow, flowing, continuous motion.
-        #
-        # We use tanh to squash the ratio into [0, 1].
-        energies = np.array([s.motion_energy for s in window])
-        jerks    = np.array([s.jerk          for s in window])
-        mean_e   = float(np.mean(energies)) + 1e-6
-        mean_j   = float(np.mean(jerks))
-        snap.sharpness = round(float(np.tanh(mean_j / (mean_e * 4.0))), 4)
 
         # ── Amplitude ───────────────────────────────────────────────────────
         #
@@ -646,7 +631,7 @@ def plot_player_scores(
     if axes_to_plot is None:
         axes_to_plot = [
             "beat_half", "beat_single", "beat_double", "beat_triple", "beat_quad",
-            "sharpness", "amplitude", "consistency", "onset_lock",
+            "amplitude", "consistency", "onset_lock",
         ]
 
     buf = session.players.get(node_id)
