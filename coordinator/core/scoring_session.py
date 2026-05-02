@@ -72,6 +72,39 @@ from scipy.signal import find_peaks, savgol_filter
 log = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Global callback registry (not pickled with sessions)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_score_callbacks: list[typing.Callable[[str, typing.Any, typing.Optional[int]], None]] = []
+"""Global registry of score event callbacks. Not pickled with sessions."""
+
+
+def add_score_callback(
+    callback: typing.Callable[[str, typing.Any, typing.Optional[int]], None]
+) -> None:
+    """
+    Register a global callback to receive score events from all sessions.
+
+    Callback signature: callback(event_type, data, node_id)
+      event_type:  "score" (intermediate) or "final_scores" (session end)
+      data:        ScoreSnapshot (for "score") or dict[node_id -> stats] (for "final_scores")
+      node_id:     player ID for intermediate scores, None for final summary
+
+    No dependencies on project structure; safe to use independently.
+    """
+    _score_callbacks.append(callback)
+
+
+def remove_score_callback(
+    callback: typing.Callable[[str, typing.Any, typing.Optional[int]], None]
+) -> None:
+    """Unregister a global score callback."""
+    try:
+        _score_callbacks.remove(callback)
+    except ValueError:
+        pass
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Data structures
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -384,7 +417,7 @@ class ScoringSession:
     """
 
     # ── Tuning knobs ──────────────────────────────────────────────────────
-    SCORE_INTERVAL     = 2.0    # seconds between score snapshots
+    SCORE_INTERVAL     = 5.0    # seconds between score snapshots
     SCORE_WINDOW       = 8.0    # seconds of history used per score
     MIN_PEAK_PROM      = 0.5    # degrees — min prominence for displacement peak
     MIN_VEL_PROM       = 1.0    # deg/s   — min prominence for velocity peak
@@ -408,9 +441,29 @@ class ScoringSession:
         self.players: dict[int, PlayerBuffer] = {}
         self._last_score_t: dict[int, float]  = {}   # node_id → last scored time
 
+        # Score callbacks are now global (see _score_callbacks above)
+        # This avoids pickle issues with callable objects
+
     # ══════════════════════════════════════════════════════════════════════
     # Public API
     # ══════════════════════════════════════════════════════════════════════
+
+    def _emit_score(self, snapshot: ScoreSnapshot, node_id: int) -> None:
+        """Fire intermediate score callback for one player."""
+        for cb in _score_callbacks:
+            try:
+                cb("score", snapshot, node_id)
+            except Exception as e:
+                log.error(f"Score callback error: {e}")
+
+    def _emit_final_scores(self) -> None:
+        """Fire final scores callback with full session summary."""
+        summary = self.summary()
+        for cb in _score_callbacks:
+            try:
+                cb("final_scores", summary, None)
+            except Exception as e:
+                log.error(f"Final scores callback error: {e}")
 
     def update(self, playback_time: float, nodeid: int, pitch: float, roll: float) -> None:
         """Adds a new sample, called from receive loop"""
@@ -426,6 +479,7 @@ class ScoringSession:
             buf.score_history.append(snap)
             self._last_score_t[nodeid] = playback_time
             log.info(f"scored at {playback_time:.2f}s with {len(buf.score_history)} scores -> {asdict(snap)}")
+            self._emit_score(snap, nodeid)
 
     def score_all(self, smooth: bool = True) -> None:
         """
@@ -451,6 +505,8 @@ class ScoringSession:
                 snap = self._score_window(buf, t, smooth=True)
                 buf.score_history.append(snap)
                 t += self.SCORE_INTERVAL
+
+        self._emit_final_scores()
 
     def save(self, path: str) -> None:
         """Pickle the entire session (all samples + scores) to disk."""

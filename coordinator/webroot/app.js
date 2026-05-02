@@ -27,6 +27,11 @@ const updatesHzAlpha = 0.999;
 const NODE_INPUT_SCALE = 0.41;
 const WAVEFORM_WINDOW_SECONDS = 10;
 
+// Score tracking
+const nodeScores = {};  // node_id -> latest score snapshot
+const nodeFinalScores = {};  // node_id -> final score data (from final_scores event)
+let finalScoresAvailable = false;  // whether we have final scores to display
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -377,8 +382,13 @@ function renderMedia(media) {
     playbackAnchor = Date.now();
     playbackTimeAtAnchor = media.current_time || 0;
     startWaveformLoop();
+    // Clear final scores when playback restarts
+    finalScoresAvailable = false;
+    document.querySelectorAll('.score-display').forEach(el => el.style.display = 'none');
   } else {
     stopWaveformLoop();
+    // Show final scores when playback stops
+    renderPlayerScores();
   }
 
   drawWaveform(currentMedia);
@@ -435,6 +445,113 @@ function updateSSELabel(status = currentSSEStatus) {
   sseLabel.textContent = `${status} · ${updatesHzFiltered.toFixed(1)} Hz`;
 }
 
+function handleScoreEvent(scoreEvent) {
+  const { type, node_id, data } = scoreEvent;
+
+  if (type === 'score' && node_id !== null) {
+    // Intermediate score event
+    nodeScores[node_id] = data;
+    showScoreFlourish(node_id, data);
+  } else if (type === 'final_scores') {
+    // Final scores event - data is {node_id: {metrics, dominant, ...}}
+    Object.assign(nodeFinalScores, data);
+    finalScoresAvailable = true;
+    // Show final scores immediately when they arrive
+    renderPlayerScores();
+  }
+}
+
+function showScoreFlourish(nodeId, scoreSnapshot) {
+  // Find the best-scoring axis for this snapshot
+  const axes = [
+    'beat_half', 'beat_single', 'beat_double', 'beat_triple', 'beat_quad',
+    'sharpness', 'amplitude', 'consistency', 'onset_lock'
+  ];
+
+  let bestAxis = null;
+  let bestScore = 0;
+
+  for (const axis of axes) {
+    const score = scoreSnapshot[axis] || 0;
+    if (score > bestScore && score > 0.6) {  // Only show if score is significant
+      bestScore = score;
+      bestAxis = axis;
+    }
+  }
+
+  if (bestAxis && bestScore > 0.6) {
+    const slot = Object.keys(nodeStates).map(Number).sort((a, b) => a - b).indexOf(Number(nodeId));
+    if (slot >= 0 && slot < NODE_SLOTS) {
+      const card = document.getElementById(`node-card-${slot}`);
+      if (card) {
+        showCardOverlay(card, bestAxis, bestScore);
+      }
+    }
+  }
+}
+
+function showCardOverlay(card, metricName, score) {
+  // Remove existing overlay if any
+  let overlay = card.querySelector('.score-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'score-overlay';
+    card.appendChild(overlay);
+  }
+
+  // Format the metric name nicely
+  const displayName = metricName.replace(/_/g, ' ').toUpperCase();
+  overlay.textContent = `${displayName}\n${(score * 100).toFixed(0)}%`;
+  overlay.style.opacity = '1';
+
+  // Fade out after 1 second
+  setTimeout(() => {
+    overlay.style.opacity = '0';
+  }, 1000);
+}
+
+function renderPlayerScores() {
+  // Show final scores above each player card if available
+  if (!finalScoresAvailable || Object.keys(nodeFinalScores).length === 0) {
+    return;
+  }
+
+  const nodeIds = Object.keys(nodeStates).map(k => Number(k)).sort((a, b) => a - b);
+
+  for (let slot = 0; slot < NODE_SLOTS; slot += 1) {
+    const card = document.getElementById(`node-card-${slot}`);
+    if (!card) continue;
+
+    let scoreDisplay = card.querySelector('.score-display');
+    if (slot < nodeIds.length) {
+      const nodeId = nodeIds[slot];
+      const scoreData = nodeFinalScores[nodeId];
+
+      if (scoreData) {
+        if (!scoreDisplay) {
+          scoreDisplay = document.createElement('div');
+          scoreDisplay.className = 'score-display';
+          card.appendChild(scoreDisplay);
+        }
+
+        // Calculate ranking - count how many players have higher total score
+        const scores = Object.values(nodeFinalScores);
+        const thisScore = Object.values(scoreData).reduce((a, b) => (typeof b === 'number' ? a + b : a), 0);
+        const ranking = scores.filter(s => {
+          const s_total = Object.values(s).reduce((a, b) => (typeof b === 'number' ? a + b : a), 0);
+          return s_total > thisScore;
+        }).length + 1;
+
+        const dominant = scoreData.dominant || '—';
+        scoreDisplay.innerHTML = `<div class="rank">#${ranking}</div><div class="dominant">${dominant}</div>`;
+        scoreDisplay.style.display = 'block';
+      }
+    } else if (scoreDisplay) {
+      scoreDisplay.style.display = 'none';
+    }
+  }
+}
+
 function connectSSE() {
   const es = new EventSource('/api/events');
 
@@ -446,8 +563,14 @@ function connectSSE() {
         const instUPS = 1000 / (now - lastUpdateTime);
         updatesHzFiltered = updatesHzFiltered ? (updatesHzAlpha * updatesHzFiltered) + ((1 - updatesHzAlpha) * instUPS) : instUPS;
       }
-      // console.log("incoming SSE dt:", now - lastUpdateTime, "data", data);
       lastUpdateTime = now;
+
+      // Process score events if present
+      if (data.scores && Array.isArray(data.scores)) {
+        for (const scoreEvent of data.scores) {
+          handleScoreEvent(scoreEvent);
+        }
+      }
 
       renderNodes(data);
       updateSSELabel();

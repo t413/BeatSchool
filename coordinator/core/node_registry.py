@@ -1,7 +1,7 @@
 import time, threading, typing, queue, logging
 from dataclasses import dataclass, field, asdict
 from comms.packet import Packet, ImuPayload
-from .scoring_session import ScoringSession
+from .scoring_session import ScoringSession, add_score_callback
 
 PKTRATE_ALPHA = 0.995
 
@@ -60,11 +60,18 @@ class NodeRegistry:
         self.media_player = ctrl.media_player
         self.scoring_session : typing.Optional[ScoringSession] = None
 
+        # Score event queue and subscribers
+        self._score_subscribers: list[queue.Queue[dict]] = []
+        self._score_sub_lock = threading.Lock()
+
     def start_session(self):
         if not self.media_player.is_playing or not (t := self.media_player.current_track):
             return
         self.scoring_session = ScoringSession(t.beats, t.onsets)
         log.info(f"Started new ScoringSession {self.scoring_session.session_id}")
+
+        # Register callback to emit score events
+        add_score_callback(self._on_score_event)
 
     def end_session(self):
         if not self.scoring_session:
@@ -80,7 +87,8 @@ class NodeRegistry:
         self.scoring_session.save(fullpath)
         self.scoring_session.log_summary()
 
-        # keep session around for frontend ui
+        # Clear the session so it stops accepting new data
+        self.scoring_session = None
 
     def _print_status(self):
         now = time.time()
@@ -162,3 +170,43 @@ class NodeRegistry:
                     q.put_nowait(pkt)
                 except Exception:
                     pass  # full queue: drop, subscriber will catch up
+
+    # ------------------------------------------------------------------
+    # Score event pub/sub (for frontend UI)
+    # ------------------------------------------------------------------
+    def subscribe_scores(self) -> queue.Queue[dict]:
+        """Return a new queue that receives score events."""
+        q = queue.Queue(maxsize=64)
+        with self._score_sub_lock:
+            self._score_subscribers.append(q)
+        return q
+
+    def unsubscribe_scores(self, q):
+        with self._score_sub_lock:
+            try:
+                self._score_subscribers.remove(q)
+            except ValueError:
+                pass
+
+    def _on_score_event(self, event_type: str, data: typing.Any, node_id: typing.Optional[int]) -> None:
+        """Callback from ScoringSession: emit score events to subscribers."""
+        # Convert ScoreSnapshot or dict to JSON-serializable format
+        if event_type == "score":
+            # data is a ScoreSnapshot
+            from dataclasses import asdict
+            score_data = asdict(data)
+        else:
+            # event_type == "final_scores", data is already a dict
+            score_data = data
+
+        event = {
+            "type": event_type,
+            "node_id": node_id,
+            "data": score_data,
+        }
+        with self._score_sub_lock:
+            for q in self._score_subscribers:
+                try:
+                    q.put_nowait(event)
+                except Exception:
+                    pass  # full queue: drop

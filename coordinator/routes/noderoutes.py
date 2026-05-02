@@ -1,5 +1,5 @@
 from __future__ import annotations
-import logging, json, typing, flask
+import logging, json, typing, flask, time
 import comms.packet as pkt
 from core.controller import reader, registry, media_player
 from core.node_registry import NodeState
@@ -64,33 +64,86 @@ def api_set_state():
 # ---------------------------------------------------------------------------
 # SSE stream
 # ---------------------------------------------------------------------------
+
+def _build_sse_update(pkts: list, score_events: list, media_player, registry, last_media_update: float) -> tuple[dict, float]:
+    """Build SSE update dict and return new last_media_update time."""
+    update: dict = {}
+
+    if pkts:
+        update['updates'] = [NodeState.pktdict(p.from_id, p.payload) for p in pkts]
+
+    if score_events:
+        update['scores'] = score_events
+
+    now = time.time()
+    if (now - last_media_update) > 2:
+        update['media'] = media_player.get_state()
+        last_media_update = now
+
+    return update, last_media_update
+
+
+def _collect_sse_events(q, score_q, media_player) -> tuple[list, list]:
+    """Collect packets and score events from queues with timeout."""
+    import queue as queue_module
+
+    timeout = 0.2 if media_player.is_playing else 2.0
+    pkts = []
+
+    try:
+        pkts = [q.get(timeout=timeout)]
+    except queue_module.Empty:
+        pass
+
+    # Get additional packets without blocking
+    while not q.empty():
+        try:
+            pkts.append(q.get_nowait())
+        except queue_module.Empty:
+            break
+
+    # Get all score events
+    score_events = []
+    while not score_q.empty():
+        try:
+            score_events.append(score_q.get_nowait())
+        except queue_module.Empty:
+            break
+
+    return pkts, score_events
+
+
 @bp.route("/events", methods=["GET"])
 def api_events():
     def generate():
         q = registry.subscribe()
+        score_q = registry.subscribe_scores()
         try:
-            import queue, time
+            import queue as queue_module, time
             last_media_update = 0
             while True:
                 try:
-                    pkts = [q.get(timeout=0.2 if media_player.is_playing else 2.0)]
-                    while not q.empty():
-                        pkts.append(q.get_nowait())
-                    update: dict = {'updates': [NodeState.pktdict(p.from_id, p.payload) for p in pkts]}
+                    pkts, score_events = _collect_sse_events(q, score_q, media_player)
 
-                    if (time.time() - last_media_update) > 2: #no need for super fast updates
-                        update['media'] = media_player.get_state()
-                        last_media_update = time.time()
-
-                    snapshot = json.dumps(update)
-                    yield f"event: node_update\ndata: {snapshot}\n\n"
-                except queue.Empty: #timeout, send a full update
+                    if pkts or score_events or (time.time() - last_media_update) > 2:
+                        update, last_media_update = _build_sse_update(
+                            pkts, score_events, media_player, registry, last_media_update
+                        )
+                        if update:
+                            snapshot = json.dumps(update)
+                            yield f"event: node_update\ndata: {snapshot}\n\n"
+                    else:
+                        # Timeout with no data - send full update
+                        snapshot = json.dumps(registry.current_state())
+                        yield f"event: node_update\ndata: {snapshot}\n\n"
+                except queue_module.Empty:
                     snapshot = json.dumps(registry.current_state())
                     yield f"event: node_update\ndata: {snapshot}\n\n"
         except GeneratorExit:
             pass
         finally:
             registry.unsubscribe(q)
+            registry.unsubscribe_scores(score_q)
 
     return flask.Response(
         flask.stream_with_context(generate()),
