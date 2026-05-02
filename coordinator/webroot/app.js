@@ -450,6 +450,7 @@ function handleScoreEvent(scoreEvent) {
 
   if (type === 'score' && node_id !== null) {
     // Intermediate score event
+    console.log("Received score event", scoreEvent);
     nodeScores[node_id] = data;
     showScoreFlourish(node_id, data);
   } else if (type === 'final_scores') {
@@ -465,7 +466,7 @@ function showScoreFlourish(nodeId, scoreSnapshot) {
   // Find the best-scoring axis for this snapshot
   const axes = [
     'beat_half', 'beat_single', 'beat_double', 'beat_triple', 'beat_quad',
-    'sharpness', 'amplitude', 'consistency', 'onset_lock'
+    'amplitude', 'consistency', 'onset_lock'
   ];
 
   let bestAxis = null;
@@ -490,24 +491,38 @@ function showScoreFlourish(nodeId, scoreSnapshot) {
   }
 }
 
+function formalName(metricname) {
+  // clean up const-case metric name for display
+  return metricname.replaceAll(/_/g, ' ').toLowerCase().replaceAll(/\b\w/g, l => l.toUpperCase());
+}
+
 function showCardOverlay(card, metricName, score) {
   // Remove existing overlay if any
   let overlay = card.querySelector('.score-overlay');
+  const needsAdd = !overlay;
   if (!overlay) {
     overlay = document.createElement('div');
     overlay.className = 'score-overlay';
-    card.appendChild(overlay);
   }
 
-  // Format the metric name nicely
-  const displayName = metricName.replace(/_/g, ' ').toUpperCase();
-  overlay.textContent = `${displayName}\n${(score * 100).toFixed(0)}%`;
+  // Format the metric name to title case
+  overlay.textContent = `${formalName(metricName)}\n${(score * 100).toFixed(0)}%`;
   overlay.style.opacity = '1';
 
-  // Fade out after 1 second
+  // Randomize position and tilt
+  const randomX = 40 + Math.random() * 20; // 40-60% from left
+  const randomY = 35 + Math.random() * 30; // 35-65% from top
+  const randomTilt = -15 + Math.random() * 30; // -15 to 15 degrees
+
+  overlay.style.left = `${randomX}%`;
+  overlay.style.top = `${randomY}%`;
+  overlay.style.transform = `translate(-50%, -50%) rotate(${randomTilt}deg)`;
+  if (needsAdd) card.appendChild(overlay); //add after style/content setup
+
+  // Fade out after 1.5 seconds
   setTimeout(() => {
     overlay.style.opacity = '0';
-  }, 1000);
+  }, 1500);
 }
 
 function renderPlayerScores() {
@@ -542,8 +557,8 @@ function renderPlayerScores() {
           return s_total > thisScore;
         }).length + 1;
 
-        const dominant = scoreData.dominant || '—';
-        scoreDisplay.innerHTML = `<div class="rank">#${ranking}</div><div class="dominant">${dominant}</div>`;
+        const dominantTxt = (scoreData.dominant.length > 2)? (formalName(scoreData.dominant) + ' Champ') : '';
+        scoreDisplay.innerHTML = `<div class="rank">#${ranking}</div><div class="dominant">${dominantTxt}</div>`;
         scoreDisplay.style.display = 'block';
       }
     } else if (scoreDisplay) {
