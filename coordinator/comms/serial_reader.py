@@ -55,7 +55,8 @@ class SerialReader:
 
         while self._running and self._ser:
             try:
-                chunk = self._ser.read(64)
+                waiting = max(1, self._ser.in_waiting)
+                chunk = self._ser.read(waiting)
                 if not chunk:
                     continue
                 buf.extend(chunk)
