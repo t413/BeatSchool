@@ -47,7 +47,7 @@ def main():
     parser.add_argument("--baud",  type=int, default=115200)
     parser.add_argument("--host",  default="0.0.0.0")
     parser.add_argument("--http-port", type=int, default=5000)
-    parser.add_argument("--song",  help="Path to song file for beat analysis and playback")
+    parser.add_argument("--song-dir",  help="Path to song directory for beat analysis and playback")
     args = parser.parse_args()
 
     if ctrl.reader or (os.environ.get("WERKZEUG_RUN_MAIN") != "true"):
@@ -56,8 +56,13 @@ def main():
         ctrl.init_reader(args.port, args.baud)
     else: log.warning("--no-serial: running without serial port (UI development mode)")
 
-    if args.song:
-        ctrl.registry.media_player.load_song(args.song)
+    for d in ['songs', '../songs']:
+        if os.path.isdir(d):
+            args.song_dir = d
+            break
+    if args.song_dir:
+        log.info(f"Loading songs from {args.song_dir}")
+        ctrl.media_player.load_songs(args.song_dir)
 
     import routes
     configure_all_module(routes, app)

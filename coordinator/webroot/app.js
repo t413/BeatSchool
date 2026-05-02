@@ -41,10 +41,6 @@ function connectSSE() {
 // Render
 // ---------------------------------------------------------------------------
 function renderState(nodes) {
-  if (Object.keys(nodes).length === 0) {
-    statePre.textContent = "(no nodes seen yet)";
-    return;
-  }
   statePre.textContent = JSON.stringify(nodes, null, 2);
 }
 

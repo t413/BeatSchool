@@ -1,7 +1,7 @@
 from __future__ import annotations
-import time, logging, json, typing, flask
+import logging, json, typing, flask
 import comms.packet as pkt
-from core.controller import reader, registry
+from core.controller import reader, registry, media_player
 
 log = logging.getLogger(__name__)
 
@@ -76,28 +76,16 @@ def api_events():
     """
     def generate():
         q = registry.subscribe()
-        last_heartbeat = time.time()
         try:
+            import queue
             while True:
-                # Block for up to 15s waiting for an update
                 try:
-                    import queue
-                    q.get(timeout=15)
-                    # Drain any queued-up updates and send one combined snapshot
-                    while not q.empty():
-                        try:
-                            q.get_nowait()
-                        except queue.Empty:
-                            break
-                    snapshot = json.dumps(registry.current_state())
-                    yield f"event: node_update\ndata: {snapshot}\n\n"
-                    last_heartbeat = time.time()
-
-                except Exception:
-                    # Timeout — send SSE comment as keepalive
-                    yield ": keepalive\n\n"
-                    last_heartbeat = time.time()
-
+                    q.get(timeout=0.2 if media_player.is_playing else 2.0)
+                    while not q.empty(): q.get_nowait()
+                except queue.Empty:
+                    pass #timeouts are fine, just send an update
+                snapshot = json.dumps(registry.current_state())
+                yield f"event: node_update\ndata: {snapshot}\n\n"
         except GeneratorExit:
             pass
         finally:

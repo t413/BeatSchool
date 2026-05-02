@@ -91,15 +91,7 @@ class NodeRegistry:
         with self._lock:
             result = {}
             if self.media_player:
-                t = self.media_player.get_current_time()
-                nextbeats = [b for b in self.media_player.beats if b > t]
-                result['media'] = {
-                    'playing': self.media_player.is_playing,
-                    'next_beat': nextbeats[0] if nextbeats else None,
-                    'track': self.media_player.song_path,
-                    'duration': self.media_player.duration,
-                    'current_time': t,
-                }
+                result['media'] = self.media_player.get_state()
             for nid, state in self._nodes.items():
                 d = asdict(state)
                 d["online"] = (now - state.last_seen) < self.STALE_TIMEOUT_S
