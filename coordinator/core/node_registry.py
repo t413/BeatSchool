@@ -1,7 +1,6 @@
 import time, threading, typing, queue
 from dataclasses import dataclass, field, asdict
 from comms.packet import Packet, ImuPayload
-import core.controller as ctrl
 
 PKTRATE_ALPHA = 0.995
 
@@ -54,6 +53,7 @@ class NodeRegistry:
         self._subscribers: list[queue.Queue[Packet]] = []
         self._sub_lock = threading.Lock()
         self._last_print_time = time.time()
+        import core.controller as ctrl #avoid import loop
         self.media_player = ctrl.media_player
 
     def _print_status(self):

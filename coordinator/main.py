@@ -1,6 +1,5 @@
 from __future__ import annotations
 import os, logging, argparse, flask
-import core.controller as ctrl
 
 log = logging.getLogger(__name__)
 
@@ -48,7 +47,18 @@ def main():
     parser.add_argument("--host",  default="0.0.0.0")
     parser.add_argument("--http-port", type=int, default=5000)
     parser.add_argument("--song-dir",  help="Path to song directory for beat analysis and playback")
+    parser.add_argument("--noupdate", default=False, action='store_true', help="Disable pip install on start")
     args = parser.parse_args()
+
+    if not args.noupdate:
+        import subprocess, sys
+        req_file = 'requirements.txt'
+        if os.path.exists(req_file):
+            print("Installing requirements using python ", sys.executable)
+            subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
+            print("Requirements installed.")
+
+    import core.controller as ctrl #only import our deps after pip install
 
     if ctrl.reader or (os.environ.get("WERKZEUG_RUN_MAIN") != "true"):
         log.info("Reloader parent process detected, skipping serial init...")
