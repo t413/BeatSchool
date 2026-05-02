@@ -3,126 +3,154 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RhythmClass Coordinator</title>
+  <title>Jazzerscise Show Control</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
+    html, body { min-height: 100%; width: 100%; }
     body {
-      font-family: monospace;
-      background: #0e0e0e;
-      color: #e0e0e0;
-      padding: 1.5rem;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #070c14;
+      color: #d8e4f2;
+    }
+    button, select {
+      font: inherit;
+      color: inherit;
+      background: none;
+      border: none;
+    }
+    button { cursor: pointer; }
+    .page-shell {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) minmax(0, 180px);
+      gap: 8px;
       min-height: 100vh;
+      height: 100vh;
+      padding: 10px;
     }
-
-    h1 { font-size: 1.1rem; color: #7eb8f7; margin-bottom: 0.25rem; }
-    .subtitle { font-size: 0.75rem; color: #555; margin-bottom: 1.5rem; }
-
-    /* Status bar */
-    #status-bar {
+    .node-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+      min-height: 0;
+    }
+    .node-card {
+      background: #08101a;
+      border: 1px solid #132032;
       display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      margin-bottom: 1.5rem;
-      font-size: 0.8rem;
-      color: #888;
+      min-height: 0;
+      height: 100%;
+      overflow: hidden;
     }
-    .dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: #444;
-      flex-shrink: 0;
+    .node-card.offline { opacity: 0.35; }
+    .node-card canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
     }
-    .dot.connected { background: #4caf50; }
-    .dot.error     { background: #f44; }
-
-    /* Controls */
-    .controls {
+    .media-stage {
+      display: grid;
+      grid-template-columns: 14rem minmax(0, 1fr);
+      gap: 8px;
+      min-height: 0;
+      align-items: stretch;
+    }
+    .media-panel {
+      display: grid;
+      gap: 6px;
+      padding: 8px;
+      background: #08101a;
+      border: 1px solid #132032;
+    }
+    .track-title {
+      font-size: 1rem;
+      line-height: 1.2;
+      color: #eef4ff;
+    }
+    .track-meta {
+      font-size: 0.82rem;
+      color: #8291ae;
+    }
+    .control-button {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #203146;
+      background: #08121d;
+      color: #d9e4f2;
+      text-align: left;
+    }
+    .control-button.secondary {
+      border-color: #161f2d;
+    }
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #203146;
+      background: #071018;
+      color: #d9e4f2;
+      appearance: none;
+    }
+    .sse-status {
       display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-bottom: 1.5rem;
-    }
-
-    button {
-      font-family: monospace;
-      font-size: 0.8rem;
-      padding: 0.4rem 0.9rem;
-      border: 1px solid #333;
-      background: #1a1a1a;
-      color: #ccc;
-      cursor: pointer;
-      border-radius: 3px;
-      transition: background 0.1s, color 0.1s;
-    }
-    button:hover  { background: #2a2a2a; color: #fff; }
-    button:active { background: #333; }
-
-    .node-id-input {
-      font-family: monospace;
-      font-size: 0.8rem;
-      padding: 0.4rem 0.6rem;
-      border: 1px solid #333;
-      background: #1a1a1a;
-      color: #ccc;
-      border-radius: 3px;
-      width: 80px;
-    }
-
-    /* State dump */
-    #state-pre {
-      white-space: pre;
-      background: #111;
-      border: 1px solid #222;
-      border-radius: 4px;
-      padding: 1rem;
+      gap: 8px;
+      color: #7f8fa8;
       font-size: 0.78rem;
-      line-height: 1.5;
-      overflow-x: auto;
-      max-height: 70vh;
-      overflow-y: auto;
-      color: #c8e6c9;
+      flex-wrap: wrap;
+      align-items: center;
     }
-
-    .section-label {
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #555;
-      margin-bottom: 0.4rem;
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #4f637d;
+    }
+    .status-dot.connected { background: #6ef49e; }
+    .status-dot.error { background: #ff9898; }
+    .wave-panel {
+      background: #061018;
+      border: 1px solid #132032;
+      display: flex;
+      min-height: 0;
+    }
+    #waveform-canvas {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      display: block;
+      background: #061018;
+    }
+    @media (max-width: 900px) {
+      .media-stage { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-  <h1>RhythmClass Coordinator</h1>
-  <p class="subtitle">MVP — raw state view</p>
+  <div class="page-shell">
+    <div id="node-grid" class="node-grid"></div>
 
-  <div id="status-bar">
-    <div class="dot" id="sse-dot"></div>
-    <span id="sse-label">SSE: connecting…</span>
-    &nbsp;|&nbsp;
-    <span id="update-counter">0 updates</span>
+    <section class="media-stage">
+      <aside class="media-panel">
+        <div class="track-title" id="track-title">No track selected</div>
+        <div class="track-meta" id="track-meta">paused · 00:00 / 00:00</div>
+        <button id="play-btn" class="control-button" onclick="togglePlay()">Play</button>
+        <button id="reset-btn" class="control-button secondary" onclick="resetTrack()" disabled>Reset</button>
+        <button id="zero-btn" class="control-button secondary" onclick="sendZero()">Zero</button>
+        <button id="ping-btn" class="control-button secondary" onclick="sendPing()">Ping</button>
+        <select id="track-select" onchange="selectTrack(this.value)">
+          <option value="">Loading tracks…</option>
+        </select>
+        <div class="sse-status">
+          <span class="status-dot" id="sse-dot"></span>
+          <span id="sse-label">SSE: connecting…</span>
+          <span id="update-counter">0 updates</span>
+        </div>
+      </aside>
+
+      <div class="wave-panel">
+        <canvas id="waveform-canvas" aria-label="Track waveform"></canvas>
+      </div>
+    </section>
   </div>
-
-  <div class="controls">
-    <input  class="node-id-input" id="node-id-input" value="0xFF" title="Node ID (hex or dec, 0xFF = broadcast)">
-    <button onclick="sendPing()">Ping broadcast</button>
-    <button onclick="sendVersion()">Req Vers</button>
-    <button onclick="sendZero()">Zero all</button>
-    <button onclick="sendMode('0x00')">Mode: IMU</button>
-    <button onclick="sendMode('0x01')">Mode: Solid white</button>
-    <button onclick="sendMode('0x02')">Mode: Flash</button>
-    <button onclick="sendMode('0x03')">Mode: Chase</button>
-    <button onclick="sendMode('0xFF')">Mode: Off</button>
-    <button onclick="sendMode('0x04')">Mode: Beat</button>
-    <button onclick="playSong()">Play</button>
-    <button onclick="pauseSong()">Pause</button>
-    <button onclick="restartSong()">Restart</button>
-    <button onclick="fetchSnapshot()">Refresh snapshot</button>
-  </div>
-
-  <div class="section-label">Node state</div>
-  <pre id="state-pre">(waiting for data…)</pre>
 
   <script src="app.js"></script>
 </body>
