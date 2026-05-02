@@ -299,9 +299,10 @@ function drawWaveform(media) {
   let centerX;
 
   if (duration > windowDuration) {
-    windowStart = clamp(currentTime - windowDuration / 2, 0, duration - windowDuration);
+    windowStart = Math.max(0, currentTime - windowDuration / 2);
     windowEnd = windowStart + windowDuration;
-    centerX = width * 0.5;
+    // Adjust centerX if we're clamped at the start
+    centerX = ((currentTime - windowStart) / windowDuration) * width;
   } else {
     windowStart = 0;
     windowEnd = duration;

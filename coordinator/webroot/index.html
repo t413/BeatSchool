@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Jazzerscise Show Control</title>
+  <title>Show Control</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { min-height: 100%; width: 100%; }
@@ -133,7 +133,7 @@
         <div class="track-title" id="track-title">No track selected</div>
         <div class="track-meta" id="track-meta">paused · 00:00 / 00:00</div>
         <button id="play-btn" class="control-button" onclick="togglePlay()">Play</button>
-        <button id="reset-btn" class="control-button secondary" onclick="resetTrack()" disabled>Reset</button>
+        <button id="reset-btn" class="control-button secondary" onclick="resetTrack()" disabled>Score & Reset</button>
         <button id="zero-btn" class="control-button secondary" onclick="sendZero()">Zero</button>
         <button id="ping-btn" class="control-button secondary" onclick="sendPing()">Ping</button>
         <select id="track-select" onchange="selectTrack(this.value)">
