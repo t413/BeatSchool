@@ -1,5 +1,5 @@
 from __future__ import annotations
-import logging, threading, pathlib, glob
+import logging, threading, pathlib, glob, random
 import vlc
 from core.media_track import MediaTrack
 
@@ -20,7 +20,7 @@ class MediaPlayer:
         self._scan_tracks()
         if self.tracks:
             log.info(f"Found {len(self.tracks)} tracks in {self.song_dir}")
-            self.select_track(self.tracks[0])
+            self.select_track(random.choice(self.tracks))
 
     def _scan_tracks(self):
         if not self.song_dir: return
