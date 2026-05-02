@@ -2,7 +2,6 @@
 
 const sseDot = document.getElementById('sse-dot');
 const sseLabel = document.getElementById('sse-label');
-const updateCounter = document.getElementById('update-counter');
 const trackTitle = document.getElementById('track-title');
 const trackMeta = document.getElementById('track-meta');
 const trackSelect = document.getElementById('track-select');
@@ -11,16 +10,22 @@ const resetBtn = document.getElementById('reset-btn');
 const nodeGrid = document.getElementById('node-grid');
 const waveCanvas = document.getElementById('waveform-canvas');
 
-let updateCount = 0;
 let currentMedia = { playing: false, track: '', duration: 0, current_time: 0, analyzed: false, tracks: [] };
 const nodeHistories = {};
+const nodeStates = {};
 const NODE_SLOTS = 10;
-const MAX_HISTORY = 20;
+const MAX_HISTORY = 60;
 let waveformAnimationFrame = null;
 let playbackAnchor = null;
 let playbackTimeAtAnchor = 0;
 let waveformPhase = 0;
 let lastWaveTimestamp = null;
+let currentSSEStatus = 'connecting';
+let lastUpdateTime = null;
+let updatesHzFiltered = 0;
+const updatesHzAlpha = 0.999;
+const NODE_INPUT_SCALE = 0.41;
+const WAVEFORM_WINDOW_SECONDS = 10;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -56,11 +61,13 @@ function resizeCanvas(canvas) {
 function mapNodePosition(pitch, roll, width, height) {
   const normX = clamp(roll / 90, -1, 1);
   const normY = clamp(pitch / 90, -1, 1);
+  const scaledX = Math.sign(normX) * Math.pow(Math.abs(normX), NODE_INPUT_SCALE);
+  const scaledY = Math.sign(normY) * Math.pow(Math.abs(normY), NODE_INPUT_SCALE);
   const paddingX = width * 0.12;
   const paddingY = height * 0.12;
   return {
-    x: paddingX + ((normX + 1) / 2) * (width - paddingX * 2),
-    y: paddingY + ((1 - normY) / 2) * (height - paddingY * 2),
+    x: paddingX + ((scaledX + 1) / 2) * (width - paddingX * 2),
+    y: paddingY + ((1 - scaledY) / 2) * (height - paddingY * 2),
   };
 }
 
@@ -82,18 +89,16 @@ function drawNodeTrail(canvas, history, online) {
 
   if (history.length > 1) {
     ctx.lineWidth = 3.5;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = 'rgba(109, 236, 255, 0.72)';
-    ctx.beginPath();
-    history.forEach((point, index) => {
-      if (index === 0) {
-        ctx.moveTo(point.x, point.y);
-      } else {
-        ctx.lineTo(point.x, point.y);
-      }
-    });
-    ctx.stroke();
+    ctx.lineCap = 'none';
+    ctx.lineJoin = 'none';
+    for (let i = 1; i < history.length; i++) {
+      const alpha = (i / history.length) * 0.72;
+      ctx.strokeStyle = `rgba(109, 236, 255, ${alpha})`;
+      ctx.beginPath();
+      ctx.moveTo(history[i - 1].x, history[i - 1].y);
+      ctx.lineTo(history[i].x, history[i].y);
+      ctx.stroke();
+    }
   }
 
   const latest = history[history.length - 1];
@@ -107,18 +112,29 @@ function drawNodeTrail(canvas, history, online) {
 }
 
 function renderNodes(state) {
-  const nodeKeys = Object.keys(state)
-    .filter((key) => key.startsWith('0x'))
-    .sort((a, b) => Number.parseInt(a, 16) - Number.parseInt(b, 16))
-    .slice(0, NODE_SLOTS);
-
-  updateCount += 1;
-  updateCounter.textContent = `${updateCount} updates`;
-
   const mediaCandidate = state.media || state.media_player || state.media_state || state.mediaState;
   if (mediaCandidate) {
     updateMediaFromSSE(mediaCandidate);
   }
+
+  if (Array.isArray(state.updates)) {
+    state.updates.forEach((node) => {
+      if (typeof node.nodeid !== 'undefined') {
+        nodeStates[node.nodeid] = node;
+      }
+    });
+  } else if (Array.isArray(state.nodes)) {
+    state.nodes.forEach((node) => {
+      if (typeof node.nodeid !== 'undefined') {
+        nodeStates[node.nodeid] = node;
+      }
+    });
+  }
+
+  const nodeKeys = Object.keys(nodeStates)
+    .map((key) => Number(key))
+    .sort((a, b) => a - b)
+    .slice(0, NODE_SLOTS);
 
   for (let slot = 0; slot < NODE_SLOTS; slot += 1) {
     const card = document.getElementById(`node-card-${slot}`);
@@ -126,20 +142,16 @@ function renderNodes(state) {
 
     if (slot < nodeKeys.length) {
       const nodeKey = nodeKeys[slot];
-      const node = state[nodeKey];
-      const pyld = node.pyld || {};
+      const node = nodeStates[nodeKey] || {};
+      const pyld = node.pyld || node;
       const pitch = Number(pyld.pitch) || 0;
       const roll = Number(pyld.roll) || 0;
-      const online = Boolean(node.online);
+      const online = true;
       const position = mapNodePosition(pitch, roll, canvas.clientWidth, canvas.clientHeight);
       let history = nodeHistories[nodeKey] || [];
 
-      if (online) {
-        history.push(position);
-        if (history.length > MAX_HISTORY) history.shift();
-      } else {
-        history = [];
-      }
+      history.push(position);
+      if (history.length > MAX_HISTORY) history.shift();
 
       nodeHistories[nodeKey] = history;
       card.classList.toggle('offline', !online);
@@ -152,6 +164,7 @@ function renderNodes(state) {
 }
 
 function updateMediaFromSSE(mediaCandidate) {
+  const oldMedia = currentMedia;
   const nextMedia = { ...currentMedia, ...mediaCandidate };
   nextMedia.duration = Number(mediaCandidate.duration) || currentMedia.duration;
   nextMedia.track = mediaCandidate.track || currentMedia.track;
@@ -175,10 +188,11 @@ function updateMediaFromSSE(mediaCandidate) {
   const stateChanged = nextMedia.track !== currentMedia.track
     || nextMedia.playing !== currentMedia.playing
     || nextMedia.duration !== currentMedia.duration;
+  const timeChanged = Math.abs((nextMedia.current_time || 0) - (currentMedia.current_time || 0)) > 0.15;
 
   currentMedia = nextMedia;
 
-  if (stateChanged || !currentMedia.playing) {
+  if (stateChanged || !currentMedia.playing || timeChanged) {
     renderMedia(currentMedia);
   }
 }
@@ -277,7 +291,8 @@ function drawWaveform(media) {
   const onsets = Array.isArray(track.onsets) ? track.onsets : [];
   const duration = Math.max(media.duration || 1, 1);
   const currentTime = clamp(media.current_time || 0, 0, duration);
-  const windowDuration = Math.min(14, duration);
+  trackMeta.textContent = `${media.playing ? 'playing' : 'paused'} · ${padTime(currentTime)} / ${padTime(duration)}`;
+  const windowDuration = Math.min(WAVEFORM_WINDOW_SECONDS, duration);
 
   let windowStart = 0;
   let windowEnd = Math.min(duration, windowDuration);
@@ -309,14 +324,11 @@ function drawWaveform(media) {
   ctx.fillRect(0, height * 0.72, width, height * 0.16);
 
   ctx.lineCap = 'round';
-  ctx.lineWidth = 6;
-  ctx.strokeStyle = 'rgba(67, 185, 255, 0.38)';
+  ctx.lineWidth = 0;
+  ctx.fillStyle = 'rgba(67, 185, 255, 0.32)';
   beats.filter((time) => time >= windowStart && time <= windowEnd).forEach((beatTime) => {
     const x = ((beatTime - windowStart) / visibleDuration) * width;
-    ctx.beginPath();
-    ctx.moveTo(x, height * 0.17);
-    ctx.lineTo(x, height * 0.83);
-    ctx.stroke();
+    ctx.fillRect(x - 3.5, height * 0.14, 7, height * 0.72);
   });
 
   ctx.lineWidth = 3.5;
@@ -328,6 +340,7 @@ function drawWaveform(media) {
     ctx.lineTo(x, height * 0.65);
     ctx.stroke();
   });
+  ctx.lineWidth = 1;
 
   ctx.beginPath();
   const waveY = height * 0.48;
@@ -416,13 +429,27 @@ function stopWaveformLoop() {
   lastWaveTimestamp = null;
 }
 
+function updateSSELabel(status = currentSSEStatus) {
+  currentSSEStatus = status;
+  sseLabel.textContent = `${status} · ${updatesHzFiltered.toFixed(1)} Hz`;
+}
+
 function connectSSE() {
   const es = new EventSource('/api/events');
 
   es.addEventListener('node_update', (e) => {
     try {
       const data = JSON.parse(e.data);
+      const now = performance.now();
+      if (lastUpdateTime && now > lastUpdateTime) {
+        const instUPS = 1000 / (now - lastUpdateTime);
+        updatesHzFiltered = updatesHzFiltered ? (updatesHzAlpha * updatesHzFiltered) + ((1 - updatesHzAlpha) * instUPS) : instUPS;
+      }
+      // console.log("incoming SSE dt:", now - lastUpdateTime, "data", data);
+      lastUpdateTime = now;
+
       renderNodes(data);
+      updateSSELabel();
     } catch (err) {
       console.error('SSE parse error:', err);
     }
@@ -430,12 +457,12 @@ function connectSSE() {
 
   es.onopen = () => {
     sseDot.className = 'status-dot connected';
-    sseLabel.textContent = 'SSE: connected';
+    updateSSELabel('connected');
   };
 
   es.onerror = () => {
     sseDot.className = 'status-dot error';
-    sseLabel.textContent = 'SSE: reconnecting…';
+    updateSSELabel('reconnecting…');
   };
 }
 

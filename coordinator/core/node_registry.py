@@ -1,19 +1,48 @@
-import time, threading, typing
+import time, threading, typing, queue
 from dataclasses import dataclass, field, asdict
 from comms.packet import Packet, ImuPayload
 import core.controller as ctrl
 
+PKTRATE_ALPHA = 0.995
 
 @dataclass
 class NodeState:
+    nodeid: int
     pyld: ImuPayload
-    last_seen: float = field(default_factory=time.time)
-    packet_count: int = 0
-    _last_print_count: int = 0
-    last_pitch: float = 0.0
-    last_roll: float = 0.0
+    packet_rate_filt: float = -1
     beat_score: float = 0.0
     streak: int = 0
+    past: list[ImuPayload] = field(default_factory=list)
+
+    @classmethod
+    def new(cls, pkt: Packet) -> 'NodeState':
+        if not isinstance(pkt.payload, ImuPayload):
+            raise ValueError("expected ImuPayload")
+        instance = cls(nodeid=pkt.from_id, pyld=pkt.payload)
+        instance.update(pkt)
+        return instance
+
+    def update(self, pkt: Packet):
+        if pkt.from_id != self.nodeid or not isinstance(pkt.payload, ImuPayload): return
+        dt = (pkt.payload.time - self.pyld.time)
+        if dt > 0.0: #prevent initial update issue
+            if self.packet_rate_filt <= 0.0: #set initial value
+                self.packet_rate_filt = 1.0 / dt
+            else: self.packet_rate_filt = PKTRATE_ALPHA * self.packet_rate_filt + (1.0 - PKTRATE_ALPHA) / dt
+        self.pyld = pkt.payload
+        self.past.append(pkt.payload)
+        if len(self.past) > 1000:
+            self.past.pop(0)
+
+    @staticmethod
+    def pktdict(nodeid: int, pyld: typing.Any) -> dict:
+        return {'nodeid': nodeid, **asdict(pyld)}
+
+    def to_dict(self) -> dict:
+        return NodeState.pktdict(self.nodeid, self.pyld)
+
+    @property
+    def last_seen(self) -> float: return self.pyld.time
 
 
 class NodeRegistry:
@@ -22,8 +51,7 @@ class NodeRegistry:
     def __init__(self):
         self._nodes: typing.Dict[int, NodeState] = {}
         self._lock = threading.Lock()
-        # Subscribers for SSE: list of queue.Queue
-        self._subscribers: list = []
+        self._subscribers: list[queue.Queue[Packet]] = []
         self._sub_lock = threading.Lock()
         self._last_print_time = time.time()
         self.media_player = ctrl.media_player
@@ -40,12 +68,7 @@ class NodeRegistry:
                 ototal = ototal + 1 if online else ototal
                 status = "ON" if online else "OFF"
 
-                # Calculate rate
-                diff_pkts = state.packet_count - state._last_print_count
-                rate = diff_pkts / dt
-                state._last_print_count = state.packet_count
-
-                print(f"[{status}] 0x{nid:02x}: {rate:4.1f} pkts/s | {state.pyld}")
+                print(f"[{status}] 0x{nid:02x}: {state.packet_rate_filt:4.1f} Hz | {state.pyld}")
             print(f"---- {ototal}/{len(self._nodes)} online ----")
         self._last_print_time = now
 
@@ -54,48 +77,27 @@ class NodeRegistry:
     # ------------------------------------------------------------------
     def update(self, pkt: Packet):
         with self._lock:
-            pyld = pkt.payload
-            if not isinstance(pyld, ImuPayload):
+            if not isinstance(pkt.payload, ImuPayload):
                 print(f"skipping non-IMU packet in registry update: {pkt}")
                 return
             node = self._nodes.get(pkt.from_id)
             if node is None:
-                node = NodeState(pyld=pyld)
-                self._nodes[pkt.from_id] = node
-            else: node.pyld = pyld
-            node.last_seen = time.time()
-            node.packet_count += 1
+                self._nodes[pkt.from_id] = NodeState.new(pkt)
+            else: node.update(pkt)
 
             # Scoring
-            if self.media_player and self.media_player.is_playing:
-                current_time = self.media_player.get_current_time()
-                if self.media_player.is_near_beat(current_time):
-                    dpitch = abs(pyld.pitch - node.last_pitch)
-                    droll = abs(pyld.roll - node.last_roll)
-                    if dpitch + droll > 1.0:  # threshold for movement
-                        node.beat_score += 1
-                        node.streak += 1
-                    else:
-                        node.streak = 0
-            node.last_pitch = pyld.pitch
-            node.last_roll = pyld.roll
-
         self._print_status()
-        self._notify_subscribers(pkt.from_id)
+        self._notify_subscribers(pkt)
 
     # ------------------------------------------------------------------
     # Read path (called from Flask threads)
     # ------------------------------------------------------------------
     def current_state(self) -> dict:
-        now = time.time()
         with self._lock:
             result = {}
             if self.media_player:
                 result['media'] = self.media_player.get_state()
-            for nid, state in self._nodes.items():
-                d = asdict(state)
-                d["online"] = (now - state.last_seen) < self.STALE_TIMEOUT_S
-                result[hex(nid)] = d
+            result['nodes'] = [n.to_dict() for n in self._nodes.values()]
             return result
 
     def get_node(self, node_id: int) -> typing.Optional[dict]:
@@ -111,9 +113,8 @@ class NodeRegistry:
     # ------------------------------------------------------------------
     # SSE pub/sub
     # ------------------------------------------------------------------
-    def subscribe(self):
+    def subscribe(self) -> queue.Queue[Packet]:
         """Return a new queue that receives node_id ints on each update."""
-        import queue
         q = queue.Queue(maxsize=64)
         with self._sub_lock:
             self._subscribers.append(q)
@@ -126,10 +127,10 @@ class NodeRegistry:
             except ValueError:
                 pass
 
-    def _notify_subscribers(self, node_id: int):
+    def _notify_subscribers(self, pkt: Packet):
         with self._sub_lock:
             for q in self._subscribers:
                 try:
-                    q.put_nowait(node_id)
+                    q.put_nowait(pkt)
                 except Exception:
                     pass  # full queue: drop, subscriber will catch up

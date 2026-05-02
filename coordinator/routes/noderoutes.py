@@ -2,6 +2,7 @@ from __future__ import annotations
 import logging, json, typing, flask
 import comms.packet as pkt
 from core.controller import reader, registry, media_player
+from core.node_registry import NodeState
 
 log = logging.getLogger(__name__)
 
@@ -65,27 +66,27 @@ def api_set_state():
 # ---------------------------------------------------------------------------
 @bp.route("/events", methods=["GET"])
 def api_events():
-    """
-    Server-Sent Events endpoint.
-    On each node update the client receives:
-        event: node_update
-        data: <JSON of full nodes snapshot>
-
-    Also sends a heartbeat comment every 15s to keep the connection alive
-    through proxies.
-    """
     def generate():
         q = registry.subscribe()
         try:
-            import queue
+            import queue, time
+            last_media_update = 0
             while True:
                 try:
-                    q.get(timeout=0.2 if media_player.is_playing else 2.0)
-                    while not q.empty(): q.get_nowait()
-                except queue.Empty:
-                    pass #timeouts are fine, just send an update
-                snapshot = json.dumps(registry.current_state())
-                yield f"event: node_update\ndata: {snapshot}\n\n"
+                    pkts = [q.get(timeout=0.2 if media_player.is_playing else 2.0)]
+                    while not q.empty():
+                        pkts.append(q.get_nowait())
+                    update: dict = {'updates': [NodeState.pktdict(p.from_id, p.payload) for p in pkts]}
+
+                    if (time.time() - last_media_update) > 2: #no need for super fast updates
+                        update['media'] = media_player.get_state()
+                        last_media_update = time.time()
+
+                    snapshot = json.dumps(update)
+                    yield f"event: node_update\ndata: {snapshot}\n\n"
+                except queue.Empty: #timeout, send a full update
+                    snapshot = json.dumps(registry.current_state())
+                    yield f"event: node_update\ndata: {snapshot}\n\n"
         except GeneratorExit:
             pass
         finally:

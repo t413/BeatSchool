@@ -1,10 +1,7 @@
-# packet.py - TTeacher wire protocol (keep in sync with Packet.h)
-# Frame: [startbyte:1][id:1][type:1][plen:1][payload:N][checksum:1]
-
 from __future__ import annotations
 
-import struct, typing, enum
-from dataclasses import dataclass, asdict
+import struct, typing, enum, time
+from dataclasses import dataclass, asdict, field
 
 # --- Constants ---
 STARTBYTE = 0xAC
@@ -91,6 +88,7 @@ class ImuPayload:
     seq: int
     pitch: float
     roll: float
+    time: float = field(default_factory=time.time)
 
     TYPE = Cmd.IMU_DATA
     PACK_FMT = '<Hff'
