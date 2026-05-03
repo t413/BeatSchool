@@ -91,6 +91,7 @@ class NodeRegistry:
         self.scoring_session = None
 
     def _print_status(self):
+        import core.controller as ctrl
         now = time.time()
         dt = now - self._last_print_time
         if dt < 1.0:
@@ -103,7 +104,7 @@ class NodeRegistry:
                 status = "ON" if online else "OFF"
 
                 print(f"[{status}] 0x{nid:02x}: {state.packet_rate_filt:4.1f} Hz | {state.pyld}")
-            print(f"---- {ototal}/{len(self._nodes)} online ----")
+            print(f"---- {ctrl.get_system_state()} - {ototal}/{len(self._nodes)} online ----")
         self._last_print_time = now
 
     # ------------------------------------------------------------------
@@ -130,10 +131,13 @@ class NodeRegistry:
     # ------------------------------------------------------------------
     def current_state(self) -> dict:
         with self._lock:
-            result = {}
+            import core.controller as ctrl
+            result = {
+                'state': ctrl.get_system_state(),
+                'nodes': [n.to_dict() for n in self._nodes.values()]
+            }
             if self.media_player:
                 result['media'] = self.media_player.get_state()
-            result['nodes'] = [n.to_dict() for n in self._nodes.values()]
             return result
 
     def get_node(self, node_id: int) -> typing.Optional[dict]:

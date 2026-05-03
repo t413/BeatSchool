@@ -165,24 +165,18 @@ class MediaPlayer:
 
     def get_state(self) -> dict:
         self.check_playback_end()  # detect and handle natural end-of-playback
-        if not self.current_track:
-            return { 'playing': False }
         t = self.get_current_time()
         track = self.current_track
-        state = {
+        return {
             'playing': self.is_playing,
-            'track': track.name,
-            'analyzed': track.analyzed,
-            'duration': track.duration,
+            'track': track.name if track else None,
+            'analyzed': track.analyzed if track else None,
+            'duration': track.duration if track else None,
             'current_time': t,
         }
-        for attr in ['beats', 'onsets']:
-            times = getattr(track, attr, [])
-            future = [b for b in times if b > t]
-            state[f'next_{attr[:-1]}'] = future[0] if future else None
-        return state
 
     def to_json(self) -> dict:
+        """same as get_state but includes all tracks info. lots of data"""
         ret = self.get_state()
         ret['tracks'] = [t.to_json() for t in self.tracks]
         return ret

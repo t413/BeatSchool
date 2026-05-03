@@ -27,6 +27,9 @@ class SerialReader:
     def stop(self):
         self._running = False
 
+    def is_connected(self):
+        return self._ser and self._ser.is_open
+
     def send(self, data: bytes | Packet):
         wassent = data
         if isinstance(data, Packet):

@@ -16,6 +16,14 @@ registry = NodeRegistry()
 reader: SerialReader | None = None
 launch_args = argparse.Namespace()
 
+def get_system_state() -> str:
+    if not reader: return "serial missing"
+    elif not reader.is_connected(): return "serial disconnected"
+    elif media_player.is_playing:
+        if registry.scoring_session: return "scoring"
+        else: return "playing"
+    else: return "ready"
+
 def init_reader(port, baud):
     global reader
     reader = SerialReader(port, baud, registry.update)

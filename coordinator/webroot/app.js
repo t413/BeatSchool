@@ -10,7 +10,8 @@ const resetBtn = document.getElementById('reset-btn');
 const nodeGrid = document.getElementById('node-grid');
 const waveCanvas = document.getElementById('waveform-canvas');
 
-let currentMedia = { playing: false, track: '', duration: 0, current_time: 0, analyzed: false, tracks: [] };
+let currentMedia = { playing: false, track: '', duration: 0, current_time: 0, analyzed: false };
+let mediaTracks = [];
 const nodeHistories = {};
 const nodeStates = {};
 const NODE_SLOTS = 10;
@@ -117,9 +118,8 @@ function drawNodeTrail(canvas, history, online) {
 }
 
 function renderNodes(state) {
-  const mediaCandidate = state.media || state.media_player || state.media_state || state.mediaState;
-  if (mediaCandidate) {
-    updateMediaFromSSE(mediaCandidate);
+  if (state.media) {
+    updateMediaFromSSE(state.media);
   }
 
   if (Array.isArray(state.updates)) {
@@ -168,36 +168,31 @@ function renderNodes(state) {
   }
 }
 
-function updateMediaFromSSE(mediaCandidate) {
+function updateMediaFromSSE(newMedia) {
   const oldMedia = currentMedia;
-  const nextMedia = { ...currentMedia, ...mediaCandidate };
-  nextMedia.duration = Number(mediaCandidate.duration) || currentMedia.duration;
-  nextMedia.track = mediaCandidate.track || currentMedia.track;
-
-  if (currentMedia.playing && nextMedia.playing) {
-    const sseTime = Number(mediaCandidate.current_time) || 0;
-    const localTime = Number(currentMedia.current_time) || 0;
-    const drift = Math.abs(sseTime - localTime);
+  currentMedia = newMedia; //save state
+  if (oldMedia.analyzed != newMedia.analyzed) {
+    console.log("refreshing media state, analysis status changed")
+    fetchMediaState();
+  }
+  if (oldMedia.playing && newMedia.playing) {
+    const newTime = Number(newMedia.current_time) || 0;
+    const oldTime = Number(oldMedia.current_time) || 0;
+    const drift = Math.abs(newTime - oldTime);
 
     if (drift > 0.35) {
-      nextMedia.current_time = sseTime;
+      console.log("sse playback time drift", drift);
       playbackAnchor = Date.now();
-      playbackTimeAtAnchor = sseTime;
-    } else {
-      nextMedia.current_time = localTime;
+      playbackTimeAtAnchor = newTime;
     }
-  } else {
-    nextMedia.current_time = Number(mediaCandidate.current_time) || currentMedia.current_time;
   }
 
-  const stateChanged = nextMedia.track !== currentMedia.track
-    || nextMedia.playing !== currentMedia.playing
-    || nextMedia.duration !== currentMedia.duration;
-  const timeChanged = Math.abs((nextMedia.current_time || 0) - (currentMedia.current_time || 0)) > 0.15;
+  const stateChanged = newMedia.track !== currentMedia.track
+    || newMedia.playing !== currentMedia.playing
+    || newMedia.duration !== currentMedia.duration;
+  const timeChanged = Math.abs((newMedia.current_time || 0) - (currentMedia.current_time || 0)) > 0.15;
 
-  currentMedia = nextMedia;
-
-  if (stateChanged || !currentMedia.playing || timeChanged) {
+  if (stateChanged || !newMedia.playing || timeChanged) {
     renderMedia(currentMedia);
   }
 }
@@ -242,14 +237,13 @@ function resetTrack() {
 }
 
 function renderTrackSelection(media) {
-  const tracks = Array.isArray(media.tracks) ? media.tracks : [];
   const existing = Array.from(trackSelect.options).map((option) => option.value);
-  const trackNames = tracks.map((track) => track.name);
+  const trackNames = mediaTracks.map((track) => track.name);
   const same = existing.length === trackNames.length && trackNames.every((name, index) => name === existing[index]);
 
   if (!same) {
     trackSelect.innerHTML = '<option value="">Select track</option>';
-    tracks.forEach((track) => {
+    mediaTracks.forEach((track) => {
       const option = document.createElement('option');
       option.value = track.name;
       option.textContent = track.name;
@@ -267,7 +261,11 @@ function fetchMediaState() {
     .then((r) => r.json())
     .then((json) => {
       if (json && typeof json === 'object') {
-        currentMedia = { ...currentMedia, ...json };
+        if (Array.isArray(json.tracks)) {
+          currentMedia = json;
+          mediaTracks = json.tracks;
+          console.log("full media state updated", json);
+        }
         renderMedia(currentMedia);
       }
     })
@@ -291,7 +289,7 @@ function drawWaveform(media) {
     return;
   }
 
-  const track = (media.tracks || []).find((item) => item.name === media.track) || {};
+  const track = (mediaTracks || []).find((item) => item.name === media.track) || {};
   const beats = Array.isArray(track.beats) ? track.beats : [];
   const onsets = Array.isArray(track.onsets) ? track.onsets : [];
   const duration = Math.max(media.duration || 1, 1);
@@ -588,7 +586,7 @@ function connectSSE() {
       }
 
       renderNodes(data);
-      updateSSELabel();
+      updateSSELabel(data.state? data.state : currentSSEStatus);
     } catch (err) {
       console.error('SSE parse error:', err);
     }
