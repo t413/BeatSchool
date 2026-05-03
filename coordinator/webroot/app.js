@@ -14,7 +14,6 @@ let currentMedia = { playing: false, track: '', duration: 0, current_time: 0, an
 let mediaTracks = [];
 const nodeHistories = {};
 const nodeStates = {};
-const NODE_SLOTS = 10;
 const MAX_HISTORY = 60;
 let waveformAnimationFrame = null;
 let playbackAnchor = null;
@@ -45,13 +44,6 @@ function padTime(seconds) {
 
 function createNodeGrid() {
   nodeGrid.innerHTML = '';
-  for (let slot = 0; slot < NODE_SLOTS; slot += 1) {
-    const card = document.createElement('article');
-    card.className = 'node-card offline';
-    card.id = `node-card-${slot}`;
-    card.innerHTML = `<canvas data-slot="${slot}" class="node-canvas"></canvas>`;
-    nodeGrid.appendChild(card);
-  }
 }
 
 function resizeCanvas(canvas) {
@@ -138,34 +130,38 @@ function renderNodes(state) {
 
   const nodeKeys = Object.keys(nodeStates)
     .map((key) => Number(key))
-    .sort((a, b) => a - b)
-    .slice(0, NODE_SLOTS);
+    .sort((a, b) => a - b);
 
-  for (let slot = 0; slot < NODE_SLOTS; slot += 1) {
-    const card = document.getElementById(`node-card-${slot}`);
-    const canvas = card.querySelector('.node-canvas');
+  // Set all existing cards to offline
+  document.querySelectorAll('.node-card').forEach(card => card.classList.add('offline'));
 
-    if (slot < nodeKeys.length) {
-      const nodeKey = nodeKeys[slot];
-      const node = nodeStates[nodeKey] || {};
-      const pyld = node.pyld || node;
-      const pitch = Number(pyld.pitch) || 0;
-      const roll = Number(pyld.roll) || 0;
-      const online = true;
-      const position = mapNodePosition(pitch, roll, canvas.clientWidth, canvas.clientHeight);
-      let history = nodeHistories[nodeKey] || [];
-
-      history.push(position);
-      if (history.length > MAX_HISTORY) history.shift();
-
-      nodeHistories[nodeKey] = history;
-      card.classList.toggle('offline', !online);
-      drawNodeTrail(canvas, history, online);
-    } else {
-      card.classList.add('offline');
-      drawNodeTrail(canvas, [], false);
+  nodeKeys.forEach((nodeKey) => {
+    let card = document.getElementById(`node-card-${nodeKey}`);
+    if (!card) {
+      card = document.createElement('article');
+      card.className = 'node-card';
+      card.id = `node-card-${nodeKey}`;
+      card.innerHTML = `<canvas class="node-canvas"></canvas>`;
+      nodeGrid.appendChild(card);
+      console.log('Creating card for node', nodeKey);
     }
-  }
+
+    const canvas = card.querySelector('.node-canvas');
+    const node = nodeStates[nodeKey] || {};
+    const pyld = node.pyld || node;
+    const pitch = Number(pyld.pitch) || 0;
+    const roll = Number(pyld.roll) || 0;
+    const online = true;
+    const position = mapNodePosition(pitch, roll, canvas.clientWidth, canvas.clientHeight);
+    let history = nodeHistories[nodeKey] || [];
+
+    history.push(position);
+    if (history.length > MAX_HISTORY) history.shift();
+
+    nodeHistories[nodeKey] = history;
+    card.classList.remove('offline');
+    drawNodeTrail(canvas, history, online);
+  });
 }
 
 function updateMediaFromSSE(newMedia) {
@@ -479,12 +475,9 @@ function showScoreFlourish(nodeId, scoreSnapshot) {
   }
 
   if (bestAxis && bestScore > 0.6) {
-    const slot = Object.keys(nodeStates).map(Number).sort((a, b) => a - b).indexOf(Number(nodeId));
-    if (slot >= 0 && slot < NODE_SLOTS) {
-      const card = document.getElementById(`node-card-${slot}`);
-      if (card) {
-        showCardOverlay(card, bestAxis, bestScore);
-      }
+    const card = document.getElementById(`node-card-${nodeId}`);
+    if (card) {
+      showCardOverlay(card, bestAxis, bestScore);
     }
   }
 }
@@ -531,38 +524,33 @@ function renderPlayerScores() {
 
   const nodeIds = Object.keys(nodeStates).map(k => Number(k)).sort((a, b) => a - b);
 
-  for (let slot = 0; slot < NODE_SLOTS; slot += 1) {
-    const card = document.getElementById(`node-card-${slot}`);
-    if (!card) continue;
+  nodeIds.forEach((nodeId) => {
+    const card = document.getElementById(`node-card-${nodeId}`);
+    if (!card) return;
 
     let scoreDisplay = card.querySelector('.score-display');
-    if (slot < nodeIds.length) {
-      const nodeId = nodeIds[slot];
-      const scoreData = nodeFinalScores[nodeId];
+    const scoreData = nodeFinalScores[nodeId];
 
-      if (scoreData) {
-        if (!scoreDisplay) {
-          scoreDisplay = document.createElement('div');
-          scoreDisplay.className = 'score-display';
-          card.appendChild(scoreDisplay);
-        }
-
-        // Calculate ranking - count how many players have higher total score
-        const scores = Object.values(nodeFinalScores);
-        const thisScore = Object.values(scoreData).reduce((a, b) => (typeof b === 'number' ? a + b : a), 0);
-        const ranking = scores.filter(s => {
-          const s_total = Object.values(s).reduce((a, b) => (typeof b === 'number' ? a + b : a), 0);
-          return s_total > thisScore;
-        }).length + 1;
-
-        const dominantTxt = (scoreData.dominant.length > 2)? (formalName(scoreData.dominant) + ' Champ') : '';
-        scoreDisplay.innerHTML = `<div class="rank">#${ranking}</div><div class="dominant">${dominantTxt}</div>`;
-        scoreDisplay.style.display = 'block';
+    if (scoreData) {
+      if (!scoreDisplay) {
+        scoreDisplay = document.createElement('div');
+        scoreDisplay.className = 'score-display';
+        card.appendChild(scoreDisplay);
       }
-    } else if (scoreDisplay) {
-      scoreDisplay.style.display = 'none';
+
+      // Calculate ranking - count how many players have higher total score
+      const scores = Object.values(nodeFinalScores);
+      const thisScore = Object.values(scoreData).reduce((a, b) => (typeof b === 'number' ? a + b : a), 0);
+      const ranking = scores.filter(s => {
+        const s_total = Object.values(s).reduce((a, b) => (typeof b === 'number' ? a + b : a), 0);
+        return s_total > thisScore;
+      }).length + 1;
+
+      const dominantTxt = (scoreData.dominant.length > 2)? (formalName(scoreData.dominant) + ' Champ') : '';
+      scoreDisplay.innerHTML = `<div class="rank">#${ranking}</div><div class="dominant">${dominantTxt}</div>`;
+      scoreDisplay.style.display = 'block';
     }
-  }
+  });
 }
 
 function connectSSE() {
