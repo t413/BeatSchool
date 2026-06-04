@@ -140,7 +140,10 @@ function renderNodes(state) {
       card.className = 'node-card';
       card.id = `node-card-${nodeKey}`;
       card.innerHTML = `<canvas class="node-canvas"></canvas>`;
-      nodeGrid.appendChild(card);
+      const existingCards = Array.from(nodeGrid.querySelectorAll('.node-card'));
+      const nextCard = existingCards.find(c => Number.parseInt(c.id.replace('node-card-', '')) > nodeKey);
+      if (nextCard) { nextCard.before(card); }
+      else { nodeGrid.appendChild(card); }
       console.log('Creating card for node', nodeKey);
     }
 
