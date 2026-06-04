@@ -24,7 +24,7 @@ let currentSSEStatus = 'connecting';
 let lastUpdateTime = null;
 let updatesHzFiltered = 0;
 const updatesHzAlpha = 0.999;
-const NODE_INPUT_SCALE = 0.41;
+const NODE_INPUT_SCALE = 0.21;
 const WAVEFORM_WINDOW_SECONDS = 10;
 
 // Score tracking
@@ -61,11 +61,9 @@ function mapNodePosition(pitch, roll, width, height) {
   const normY = clamp(pitch / 90, -1, 1);
   const scaledX = Math.sign(normX) * Math.pow(Math.abs(normX), NODE_INPUT_SCALE);
   const scaledY = Math.sign(normY) * Math.pow(Math.abs(normY), NODE_INPUT_SCALE);
-  const paddingX = width * 0.12;
-  const paddingY = height * 0.12;
   return {
-    x: paddingX + ((scaledX + 1) / 2) * (width - paddingX * 2),
-    y: paddingY + ((1 - scaledY) / 2) * (height - paddingY * 2),
+    x: ((scaledX + 1) / 2) * (width - 2),
+    y: ((1 - scaledY) / 2) * (height - 2),
   };
 }
 
