@@ -14,7 +14,7 @@ sample per player, and periodically computes ScoreSnapshots across several axes:
   beat_triple  — triplet feel
   beat_quad    — 16th notes / quad time
   amplitude    — normalized RMS displacement (effort / expressiveness)
-  consistency  — how stable the motion is within the window
+  circularity  — how much motion follows a circular orbit
   onset_lock   — how well peaks align to actual musical onsets (bonus axis)
 
 CORE IDEA: PHASE COHERENCE (Rayleigh statistic)
@@ -137,7 +137,7 @@ class ScoreSnapshot:
     beat_triple:  float = 0.0   # triplet     (×3)
     beat_quad:    float = 0.0   # 16th-note   (×4)
     amplitude:    float = 0.0   # normalized RMS displacement
-    consistency:  float = 0.0   # amplitude regularity
+    circularity:  float = 0.0   # roundness of motion orbit
     onset_lock:   float = 0.0   # alignment to musical onsets
     dominant:     str   = "—"   # best-fit subdivision label
     #TODO ideas: sharpness vs smoothness (two scores), circle pattern matching
@@ -532,7 +532,7 @@ class ScoringSession:
         Useful for plotting a single score axis over time.
 
         axis: one of beat_half, beat_single, beat_double, beat_triple,
-              beat_quad, amplitude, consistency, onset_lock
+              beat_quad, amplitude, circularity, onset_lock
         """
         buf = self.players.get(node_id)
         if not buf or not buf.score_history:
@@ -545,7 +545,7 @@ class ScoringSession:
         """Return all scored axes for a player as {axis: (times, scores)}."""
         axes = [
             "beat_half","beat_single","beat_double","beat_triple","beat_quad",
-            "amplitude","consistency","onset_lock",
+            "amplitude","circularity","onset_lock",
         ]
         return {ax: self.score_timeline(node_id, ax) for ax in axes}
 
@@ -556,7 +556,7 @@ class ScoringSession:
         """
         axes = [
             "beat_half","beat_single","beat_double","beat_triple","beat_quad",
-            "amplitude","consistency","onset_lock",
+            "amplitude","circularity","onset_lock",
         ]
         result: dict[int, dict[str, float]] = {}
         for nid, buf in self.players.items():
@@ -626,17 +626,28 @@ class ScoringSession:
         rms_angle = float(np.sqrt(np.mean(pitches ** 2 + rolls ** 2)))
         snap.amplitude = round(float(np.tanh(rms_angle / self.AMPLITUDE_MIDPOINT)), 4)
 
-        # ── Consistency ─────────────────────────────────────────────────────
+        # ── Circularity ─────────────────────────────────────────────────────
         #
-        # How repeatable is the amplitude peak-to-peak?
-        # Low coefficient of variation → consistent → score near 1.
-        # High variation → erratic → score near 0.
-        combined = np.abs(pitches + rolls)  # signed combination for peak detection
-        peak_idxs, _ = find_peaks(combined, distance=3)
-        if len(peak_idxs) >= 3:
-            peak_vals = combined[peak_idxs]
-            cv = float(np.std(peak_vals) / (np.mean(peak_vals) + 1e-6))
-            snap.consistency = round(float(np.exp(-cv * 3.0)), 4)
+        # Measures how much the motion follows a circular/elliptical orbit.
+        # In a circular movement, pitch and roll are ~90° out of phase.
+        # This implies one axis correlates highly with the derivative of the other.
+        p_centered = pitches - np.mean(pitches)
+        r_centered = rolls - np.mean(rolls)
+
+        if np.std(p_centered) > 0.5 and np.std(r_centered) > 0.5:
+            # Velocity estimation (phase-shifted by 90° from position in oscillatory motion)
+            v_p = np.gradient(p_centered)
+            v_r = np.gradient(r_centered)
+
+            # Cross-correlation between position and velocity of the opposite axis
+            # A circle results in high absolute correlation (sine vs cosine velocity)
+            corr_p_vr = np.corrcoef(p_centered, v_r)[0, 1]
+            corr_r_vp = np.corrcoef(r_centered, v_p)[0, 1]
+
+            # Score is the average of the absolute correlations.
+            # Linear motion (in-phase) will result in near-zero correlation here.
+            circular_score = (abs(corr_p_vr) + abs(corr_r_vp)) / 2.0
+            snap.circularity = round(float(np.nan_to_num(circular_score)), 4)
 
         # ── Onset lock ──────────────────────────────────────────────────────
         #
@@ -687,7 +698,7 @@ def plot_player_scores(
     if axes_to_plot is None:
         axes_to_plot = [
             "beat_half", "beat_single", "beat_double", "beat_triple", "beat_quad",
-            "amplitude", "consistency", "onset_lock",
+            "amplitude", "circularity", "onset_lock",
         ]
 
     buf = session.players.get(node_id)
