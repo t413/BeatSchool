@@ -139,7 +139,7 @@ function renderNodes(state) {
       card = document.createElement('article');
       card.className = 'node-card';
       card.id = `node-card-${nodeKey}`;
-      card.innerHTML = `<canvas class="node-canvas"></canvas>`;
+      card.innerHTML = `<canvas class="node-canvas"></canvas><div class="score-chart"></div>`;
       const existingCards = Array.from(nodeGrid.querySelectorAll('.node-card'));
       const nextCard = existingCards.find(c => Number.parseInt(c.id.replace('node-card-', '')) > nodeKey);
       if (nextCard) { nextCard.before(card); }
@@ -447,12 +447,14 @@ function handleScoreEvent(scoreEvent) {
     // Intermediate score event
     console.log("Received score event", scoreEvent);
     nodeScores[node_id] = data;
+    updateNodeChart(node_id, data);
     showScoreFlourish(node_id, data);
   } else if (type === 'final_scores') {
     // Final scores event - data is {node_id: {metrics, dominant, ...}}
     Object.assign(nodeFinalScores, data);
     finalScoresAvailable = true;
     // Show final scores immediately when they arrive
+    Object.keys(data).forEach(id => updateNodeChart(id, data[id]));
     renderPlayerScores();
   }
 }
@@ -517,6 +519,25 @@ function showCardOverlay(card, metricName, score) {
   }, 1500);
 }
 
+function updateNodeChart(nodeId, scoreData) {
+  const card = document.getElementById(`node-card-${nodeId}`);
+  if (!card || !scoreData) return;
+  const chart = card.querySelector('.score-chart');
+  if (!chart) return;
+
+  // Exclude non-metric metadata
+  const metrics = Object.keys(scoreData).filter(k => k !== 't' && k !== 'dominant');
+  chart.innerHTML = metrics.map(m => {
+    const val = scoreData[m] || 0;
+    return `
+      <div class="score-bar-group">
+        <div class="score-bar" style="height: ${(val * 100).toFixed(1)}%"></div>
+        <div class="score-label">${formalName(m)}</div>
+      </div>
+    `;
+  }).join('');
+}
+
 function renderPlayerScores() {
   // Show final scores above each player card if available
   if (!finalScoresAvailable || Object.keys(nodeFinalScores).length === 0) {
@@ -538,6 +559,9 @@ function renderPlayerScores() {
         scoreDisplay.className = 'score-display';
         card.appendChild(scoreDisplay);
       }
+
+      // Update chart with final summary data
+      updateNodeChart(nodeId, scoreData);
 
       // Calculate ranking - count how many players have higher total score
       const scores = Object.values(nodeFinalScores);
